@@ -23,11 +23,11 @@ cwd = os.getcwd()
 
 # get the files directoy. We need the following statements to make the auto gallery running
 if cwd.split('\\')[-1] == 'examples':
-   directory = os.path.join('..', 'files', 'parameters')
-   materials_directory = os.path.join('..', 'files', 'materials')
+    directory = os.path.join('..', 'files', 'parameters')
+    materials_directory = os.path.join('..', 'files', 'materials')
 else:
-   directory = os.path.join('files', 'parameters')
-   materials_directory = os.path.join('files', 'materials')
+    directory = os.path.join('files', 'parameters')
+    materials_directory = os.path.join('files', 'materials')
 
 
 # the parameters file
@@ -48,46 +48,46 @@ plot_config = True
 # =====================
 
 if plot_config:
-   # In case plot config is enabled, we open a pyvista plotter
-   pl = pv.Plotter()
+    # In case plot config is enabled, we open a pyvista plotter
+    pl = pv.Plotter()
 
 
 # We loop over all magnets
 for i in range(num_mag):
 
-   if params_df['yoke_type'][i] == 'Mag1':
+    if params_df['yoke_type'][i] == 'Mag1':
 
-      points, B = snoopy.get_vector_field_mag_1(params_df, i, materials_directory=materials_directory)
-      maps.append((points, B))
+       points, B = snoopy.get_vector_field_mag_1(params_df, i, materials_directory=materials_directory)
+       maps.append((points, B))
 
-      if plot_config:
-         snoopy.plot_geometry_mag_1(pl, params_df, i)
-         snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_1 in T', mag=0.05, sym_yz=1, sym_xz=2)
+       if plot_config:
+          snoopy.plot_geometry_mag_1(pl, params_df, i)
+          snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_1 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
-   if params_df['yoke_type'][i] == 'Mag2':
+    if params_df['yoke_type'][i] == 'Mag2':
 
-      points, B = snoopy.get_vector_field_mag_2(params_df, i, materials_directory=materials_directory)
-      maps.append((points, B))
+       points, B = snoopy.get_vector_field_mag_2(params_df, i, materials_directory=materials_directory)
+       maps.append((points, B))
 
-      if plot_config:
-         snoopy.plot_geometry_mag_2(pl, params_df, i)
-         snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_2 in T', mag=0.01, sym_yz=1, sym_xz=2)
+       if plot_config:
+          snoopy.plot_geometry_mag_2(pl, params_df, i)
+          snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_2 in T', mag=0.01, sym_yz=1, sym_xz=2)
 
-   if params_df['yoke_type'][i] == 'Mag3':
+    if params_df['yoke_type'][i] == 'Mag3':
 
-      points, B = snoopy.get_vector_field_mag_3(params_df, i, materials_directory=materials_directory)
-      maps.append((points, B))
+       points, B = snoopy.get_vector_field_mag_3(params_df, i, materials_directory=materials_directory)
+       maps.append((points, B))
 
-      if plot_config:
-         snoopy.plot_geometry_mag_3(pl, params_df, i)
-         snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_3 in T', mag=0.05, sym_yz=1, sym_xz=2)
+       if plot_config:
+          snoopy.plot_geometry_mag_3(pl, params_df, i)
+          snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_3 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
 
 
 if plot_config:
-   pl.show_grid()
-   pl.camera_position = 'zy'
-   pl.camera.elevation = 35
-   pl.camera.azimuth = 45
-   pl.add_axes()
-   pl.show()
+    pl.show_grid()
+    pl.camera_position = 'zy'
+    pl.camera.elevation = 35
+    pl.camera.azimuth = 45
+    pl.add_axes()
+    pl.show()

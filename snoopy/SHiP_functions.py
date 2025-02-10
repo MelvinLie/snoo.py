@@ -36,7 +36,8 @@ def get_vector_field_mag_1(parameters,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
-                  materials_directory='files/materials'):
+                  materials_directory='files/materials',
+                  quad_order=8):
    '''Get the vector point cloud for the magnet 1 template.
     
    :params parameters:
@@ -74,6 +75,9 @@ def get_vector_field_mag_1(parameters,
 
    :params materials_directory:
       The directory where the material files are stored. Default files/materials.
+
+   :param quad_order:
+      The quadrature order. Default 8.
 
    :return:
       The positions and field components in a 3D numpy grid.
@@ -122,9 +126,9 @@ def get_vector_field_mag_1(parameters,
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
@@ -137,6 +141,9 @@ def get_vector_field_mag_1(parameters,
    lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
    z_min = Z_pos - delta_z
    z_max = Z_pos + Z_len + delta_z
+
+   # the maximum number of turns
+   max_turns = np.int64(parameters["max_turns"][df_index])
    
    # the iron domain
    vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
@@ -232,6 +239,10 @@ def get_vector_field_mag_1(parameters,
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
+
    # these are the vertical positions
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
@@ -239,14 +250,14 @@ def get_vector_field_mag_1(parameters,
    if X_mgap_1 == 0.0 or X_mgap_2 == 0.0:
 
       # make only a single coil
-      kp = np.array([[-X_core_2 - yoke_spacer - ins, Z_pos + Z_len             ],
-                     [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                     [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                     [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [-X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [-X_core_1 - yoke_spacer - ins,   Z_pos                   ]])
+      kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+                     [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                     [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                     [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                     [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                     [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                     [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
       
 
@@ -256,14 +267,15 @@ def get_vector_field_mag_1(parameters,
 
       # make two coils
 
-      kp_1 = np.array([[ X_mgap_2 - yoke_spacer - ins, Z_pos + Z_len           ],
-                     [ X_mgap_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                     [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                     [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [ X_mgap_1,                       Z_pos-yoke_spacer - ins ],
-                     [ X_mgap_1 - yoke_spacer - ins,   Z_pos                   ]])
+      kp_1 = np.array([[ X_mgap_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len + coil_radius ],
+                     [ X_mgap_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius        ],
+                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius        ],
+                     [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len               ],
+                     [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                       ],
+                     [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
+                     [ X_mgap_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
+                     [ X_mgap_1 - yoke_spacer - ins - coil_radius,   Z_pos                       ]])
+      
       
       kp_2 = kp_1.copy()
       kp_2[:, 0] *= -1.0
@@ -303,7 +315,7 @@ def get_vector_field_mag_1(parameters,
    solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
                                 [dom_iron], [dom_air],
                                 [reluctance_iron],
-                                quad_order=12, max_newton_iterations=150)
+                                quad_order=quad_order, max_newton_iterations=150)
    
    x = solver.solve()
 
@@ -472,15 +484,18 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
    field_density = 0.5*parameters["field_density"][df_index]
+
+   # the maximum number of turns
+   max_turns = np.int64(parameters["max_turns"][df_index])
 
    # the limits in x, y, and z
    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -581,20 +596,24 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
 
    # ====================================================
    # Make a coil object
-   kp = np.array([[-X_core_2 - yoke_spacer - ins, Z_pos + Z_len             ],
-                  [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                  [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                  [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                  [-X_core_1,                       Z_pos-yoke_spacer - ins ],
-                  [-X_core_1 - yoke_spacer - ins,   Z_pos                   ]])
-   
+   kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+                  [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                  [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                  [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+
    # determine the slot size
    slot_size = 2*min(Y_core_1, Y_core_2)
 
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
+
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
 
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
@@ -798,15 +817,18 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.4,
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
    field_density = 0.5*parameters["field_density"][df_index]
+
+   # the maximum number of turns
+   max_turns = np.int64(parameters["max_turns"][df_index])
 
    # the limits in x, y, and z
    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -908,21 +930,24 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.4,
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
+
    # these are the vertical positions
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
 
    # make two coils
+   kp_1 = np.array([[ X_void_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
+                  [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_yoke_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                  [ X_yoke_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                  [ X_yoke_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [ X_void_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [ X_void_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
-   kp_1 = np.array([[ X_void_2 - yoke_spacer - ins, Z_pos + Z_len           ],
-                  [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_yoke_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                  [ X_yoke_1 + yoke_spacer + ins,   Z_pos                   ],
-                  [ X_yoke_1,                       Z_pos-yoke_spacer - ins ],
-                  [ X_void_1,                       Z_pos-yoke_spacer - ins ],
-                  [ X_void_1 - yoke_spacer - ins,   Z_pos                   ]])
-      
    kp_2 = kp_1.copy()
    kp_2[:, 0] *= -1.0
       
@@ -1127,8 +1152,8 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
    Z_len_1 = parameters["Z_len(m)"][df_index]
    Z_pos_1 = parameters["Z_pos(m)"][df_index]
    
-   yoke_spacer_1 = parameters["yoke_spacer(m)"][df_index]
-   ins_1 = parameters["insulation(m)"][df_index]
+   yoke_spacer_1 = parameters["yoke_spacer(mm)"][df_index]*1e-3
+   ins_1 = parameters["insulation(mm)"][df_index]*1e-3
    current_1 = parameters["NI(A)"][df_index]
    coil_radius_1 = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
@@ -1163,8 +1188,8 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
    Z_len_2 = parameters["Z_len(m)"][df_index + 1]
    Z_pos_2 = parameters["Z_pos(m)"][df_index + 1]
    
-   yoke_spacer_2 = parameters["yoke_spacer(m)"][df_index + 1]
-   ins_2 = parameters["insulation(m)"][df_index + 1]
+   yoke_spacer_2 = parameters["yoke_spacer(mm)"][df_index + 1]*1e-3
+   ins_2 = parameters["insulation(mm)"][df_index + 1]*1e-3
    current_2 = parameters["NI(A)"][df_index + 1]
    coil_radius_2 = 0.5*parameters["coil_diam(mm)"][df_index + 1]*1e-3
 
@@ -1173,6 +1198,10 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
    delta_z_2 = parameters["delta_z(m)"][df_index + 1]
 
    field_density_2 = 0.5*parameters["field_density"][df_index + 1]
+
+   # the maximum number of turns
+   max_turns_1 = np.int64(parameters["max_turns"][df_index])
+   max_turns_2 = np.int64(parameters["max_turns"][df_index + 1])
 
    # the limits in x, y, and z
    lim_x = max([max([X_yoke_1_1, X_yoke_2_1]) + delta_x_1, max([X_yoke_1_2, X_yoke_2_2]) + delta_x_2])
@@ -1307,7 +1336,16 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
 
    # determine the number of conductors
    num_cond_1 = np.int32(slot_size_1/2/(coil_radius_1 + ins_1))
+
+   # do not allow more conductors than a certain amount
+   if num_cond_1 > max_turns_1:
+      num_cond_1 = max_turns_1
+
    num_cond_2 = np.int32(slot_size_2/2/(coil_radius_2 + ins_2))
+
+   # do not allow more conductors than a certain amount
+   if num_cond_2 > max_turns_2:
+      num_cond_2 = max_turns_2
 
    # these are the vertical positions
    y_1 = np.linspace(-0.5*slot_size_1 + coil_radius_1 + ins_1,
@@ -1522,15 +1560,17 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
    field_density = 0.5*parameters["field_density"][df_index]
+
+   max_turns = np.int64(parameters["max_turns"][df_index])
 
    # the limits in x, y, and z
    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -1595,6 +1635,10 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
+
    # these are the vertical positions
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
@@ -1602,14 +1646,14 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    if X_mgap_1 == 0.0 or X_mgap_2 == 0.0:
 
       # make only a single coil
-      kp = np.array([[-X_core_2 - yoke_spacer - ins, Z_pos + Z_len             ],
-                     [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                     [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                     [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [-X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [-X_core_1 - yoke_spacer - ins,   Z_pos                   ]])
+      kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+                     [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                     [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                     [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                     [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                     [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                     [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
       
 
@@ -1619,14 +1663,14 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
 
       # make two coils
 
-      kp_1 = np.array([[ X_mgap_2 - yoke_spacer - ins, Z_pos + Z_len           ],
-                     [ X_mgap_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                     [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                     [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                     [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                     [ X_mgap_1,                       Z_pos-yoke_spacer - ins ],
-                     [ X_mgap_1 - yoke_spacer - ins,   Z_pos                   ]])
+      kp_1 = np.array([[ X_mgap_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len + coil_radius ],
+                     [ X_mgap_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius        ],
+                     [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius        ],
+                     [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len               ],
+                     [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                       ],
+                     [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
+                     [ X_mgap_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
+                     [ X_mgap_1 - yoke_spacer - ins - coil_radius,   Z_pos                       ]])
       
       kp_2 = kp_1.copy()
       kp_2[:, 0] *= -1.0
@@ -1699,15 +1743,17 @@ def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
    field_density = 0.5*parameters["field_density"][df_index]
+
+   max_turns = np.int64(parameters["max_turns"][df_index])
 
    # the limits in x, y, and z
    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -1771,21 +1817,25 @@ def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
 
 
    # ====================================================
-   # Make a coil object
-   kp = np.array([[-X_core_2 - yoke_spacer - ins, Z_pos + Z_len             ],
-                  [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_core_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                  [ X_core_1 + yoke_spacer + ins,   Z_pos                   ],
-                  [ X_core_1,                       Z_pos-yoke_spacer - ins ],
-                  [-X_core_1,                       Z_pos-yoke_spacer - ins ],
-                  [-X_core_1 - yoke_spacer - ins,   Z_pos                   ]])
-   
+   # Make a coil object   
+   kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+                  [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                  [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                  [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+
    # determine the slot size
    slot_size = 2*min(Y_core_1, Y_core_2)
 
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
+
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
 
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
@@ -1858,15 +1908,17 @@ def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    delta_y = parameters["delta_y(m)"][df_index]
    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(m)"][df_index]
+   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(m)"][df_index]
+   ins = parameters["insulation(mm)"][df_index]*1e-3
 
    current = parameters["NI(A)"][df_index]
 
    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
    field_density = 0.5*parameters["field_density"][df_index]
+
+   max_turns = np.int64(parameters["max_turns"][df_index])
 
    # the limits in x, y, and z
    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -1931,21 +1983,24 @@ def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    # determine the number of conductors
    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
+   # do not allow more conductors than a certain amount
+   if num_cond > max_turns:
+      num_cond = max_turns
+
    # these are the vertical positions
    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
 
    # make two coils
+   kp_1 = np.array([[ X_void_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
+                  [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                  [ X_yoke_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                  [ X_yoke_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                  [ X_yoke_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [ X_void_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                  [ X_void_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
-   kp_1 = np.array([[ X_void_2 - yoke_spacer - ins, Z_pos + Z_len           ],
-                  [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins    ],
-                  [ X_yoke_2 + yoke_spacer + ins,   Z_pos + Z_len           ],
-                  [ X_yoke_1 + yoke_spacer + ins,   Z_pos                   ],
-                  [ X_yoke_1,                       Z_pos-yoke_spacer - ins ],
-                  [ X_void_1,                       Z_pos-yoke_spacer - ins ],
-                  [ X_void_1 - yoke_spacer - ins,   Z_pos                   ]])
-      
    kp_2 = kp_1.copy()
    kp_2[:, 0] *= -1.0
       
