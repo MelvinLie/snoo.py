@@ -1489,12 +1489,6 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    '''
 
    # ====================================================
-   # read the material data
-   reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
-                                                    parameters["material"][df_index]))
-   reluctance_air = snoopy.ConstantReluctance(1e7/4/np.pi)
-
-   # ====================================================
    # mesh generation
    gmsh.initialize()
    gmsh.model.add("make mesh mag 1 template")
