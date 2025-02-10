@@ -1,0 +1,6 @@
+yoke_type,coil_type,NI(A),coil_diam(mm),insulation(m),yoke_spacer(m),material,field_density,delta_x(m),delta_y(m),delta_z(m),Z_pos(m),Z_len(m),Xmgap1(m),Xcore1(m),Xvoid1(m),Xyoke1(m),Xmgap2(m),Xcore2(m),Xvoid2(m),Xyoke2(m),Ycore1(m),Yvoid1(m),Yyoke1(m),Ycore2(m),Yvoid2(m),Yyoke2(m)
+Mag1,Racetrack,6.28E+03,20,0.02,0.01,files/materials/bhiron_1.csv,5,0.5,0.5,0.5,0,4.52,0,0.5,0.52,1.02,0,0.5,0.52,1.02,1.3,1.3,1.8,1.3,1.3,1.8
+Mag2,Racetrack,3.20E+06,20,0.008,0.01,files/materials/bhiron_1.csv,5,1,1,1,4.62,7,0,0.45,0.8,1.3,0,0.45,1,1.7,0.22,0.27,0.8,0.22,0.27,1
+Mag1,Racetrack,6000,20,0.001,0,files/materials/bhiron_1.csv,5,0.5,0.5,0.5,14.22,3.6,0,0.25,0.41,0.66,0,0.49,0.66,1.15,0.08,0.08,0.33,1.05,1.05,1.53
+Mag3,Racetrack,6000,20,0.001,0,files/materials/bhiron_1.csv,5,0.5,0.5,0.5,17.92,2.9,0,0.03,0.05,0.08,0,1,1.05,2.05,1.92,1.92,1.95,1.92,1.92,2.92
+Mag3,Racetrack,6000,20,0.001,0,files/materials/bhiron_1.csv,5,0.5,0.5,0.5,20.92,3.64,0,0.03,0.5,0.53,0,1,1.02,2.02,0.08,0.08,0.11,1.73,1.73,2.73
