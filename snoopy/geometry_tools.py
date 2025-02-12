@@ -497,3 +497,29 @@ def add_SHIP_iron_core(model, X_core_1, X_core_2, Y_core_1, Y_core_2,
     vol_1 = model.occ.addVolume([sl_1])
 
     return vol_1
+
+def compute_area_polygon(kp, isclosed=True):
+    '''Compute the area of a non-intersecting (default = closed) polygon.
+    Closed means that the first and last keypoints is identical. If this
+    is not the case, set the isclosed flag to false.
+    
+    :param kp:
+        The keypoints in an array of size (M x 2).
+        
+    :param isclosed:
+        Set this flag if the polygon is not closed, that means if first and last
+        keypoint are not identical.
+
+    :return:
+        The area.
+        
+    '''
+    area = 0.0
+
+    for i in range(kp.shape[0]-1):
+        area += kp[i, 0]*kp[i+1, 1] - kp[i+1, 0]*kp[i, 1]
+
+    if not isclosed:
+        area += kp[-1, 0]*kp[0, 1] - kp[0, 0]*kp[-1, 1]
+
+    return 0.5*area

@@ -28,6 +28,9 @@ def plot_vector_field(pl, points, field, title='field', opacity=1.0, mag=1.0, cm
     :param cmap:
         The colormap.
 
+    :param clim:
+        The colormap limits.
+
     :param sym_xy:
         The symmetry condition on the xy plane.
         0 = none
