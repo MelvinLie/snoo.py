@@ -401,7 +401,8 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
-                  materials_directory='files/materials'):
+                  materials_directory='files/materials',
+                  quad_order=8):
    '''Get the vector point cloud for the magnet 2 template.
     
    :params parameters:
@@ -439,6 +440,9 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
 
    :params materials_directory:
       The directory where the material files are stored. Default files/materials.
+
+   :param quad_order:
+      The quadrature order. Default 8.
 
    :return:
       The positions and field components in a 3D numpy grid.
@@ -651,7 +655,7 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
    solver = snoopy.RedMVPSolver(gmsh.model, [coil], 
                                 [dom_core, dom_yoke], [dom_air],
                                 [reluctance_iron, reluctance_iron],
-                                quad_order=10, max_newton_iterations=25)
+                                quad_order=quad_order, max_newton_iterations=25)
    
    x = solver.solve()
 
@@ -729,11 +733,12 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
    return ret_vals
 
 
-def get_vector_field_mag_3(parameters, df_index=0, lc=0.4,
+def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
-                  materials_directory='files/materials'):
+                  materials_directory='files/materials',
+                  quad_order=8):
    '''Get the vector point cloud for the magnet 3 template.
     
    :params parameters:
@@ -772,6 +777,9 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.4,
    :params materials_directory:
       The directory where the material files are stored. Default files/materials.
 
+   :param quad_order:
+      The quadrature order. Default 8.
+   
    :return:
       The positions and field components in a 3D numpy grid.
    '''
@@ -986,7 +994,7 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.4,
    solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
                                 [dom_iron], [dom_air],
                                 [reluctance_iron],
-                                quad_order=12, max_newton_iterations=50)
+                                quad_order=quad_order, max_newton_iterations=50)
    
    x = solver.solve()
 
@@ -1069,7 +1077,8 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
-                  materials_directory='files/materials'):
+                  materials_directory='files/materials',
+                  quad_order=8):
    '''Get the vector point cloud for the HASC template, i.e. the coupling
    of hardon absorber and superconducting magnet.
     
@@ -1108,6 +1117,9 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
 
    :params materials_directory:
       The directory where the material files are stored. Default files/materials.
+
+   :param quad_order:
+      The quadrature order. Default 8.
 
    :return:
       The positions and field components in a 3D numpy grid.
@@ -1412,7 +1424,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
    solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
                                 [dom_nc, dom_sc_core, dom_sc_yoke], [dom_air],
                                 [reluctance_iron, reluctance_iron, reluctance_iron],
-                                quad_order=12, max_newton_iterations=50)
+                                quad_order=quad_order, max_newton_iterations=50)
    
    x = solver.solve()
 

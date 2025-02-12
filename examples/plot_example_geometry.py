@@ -19,7 +19,7 @@ import snoopy as snoopy
 # =================
 
 # the parameters file
-params_df = pd.read_csv(os.path.join('files', 'parameters', 'baseline_1_mod.csv'))
+params_df = pd.read_csv(os.path.join('files', 'parameters', 'baseline_1.csv'))
 
 # the number of magnets
 num_mag = params_df.values.shape[0]
@@ -49,7 +49,7 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_1(pl, params_df, i, opacity=1)
+         snoopy.plot_geometry_mag_1(pl, params_df, i, opacity=1, show_edges=True)
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_1 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
    if params_df['yoke_type'][i] == 'Mag2':
@@ -58,7 +58,7 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_2(pl, params_df, i, opacity=1)
+         snoopy.plot_geometry_mag_2(pl, params_df, i, opacity=1, show_edges=True)
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_2 in T', mag=0.01, sym_yz=1, sym_xz=2)
 
    if params_df['yoke_type'][i] == 'Mag3':
@@ -67,7 +67,7 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_3(pl, params_df, i, opacity=1)
+         snoopy.plot_geometry_mag_3(pl, params_df, i, opacity=1, show_edges=True)
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_3 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
 
