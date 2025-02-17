@@ -1,10 +1,12 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import json
 from scipy.interpolate import splev, splrep, PchipInterpolator
 from scipy.optimize import minimize_scalar
 
 class Permeability():
+    '''A python class for permeability data.'''
 
     def __init__(self, input_filename):
         '''Default constructor.
@@ -206,6 +208,7 @@ class Permeability():
         return 1
 
 class ConstantPermeability():
+    '''A python class for constant permeabilities.'''
 
     def __init__(self, mu):
         '''Default constructor.
@@ -266,21 +269,27 @@ class ConstantPermeability():
         return 0
 
 class Reluctance():
-
+    '''This class is used for the reluctance model. It used Piecewise Cubic Hermite Interpolating Polynomials
+    to fit BH data provided in a .json file.
+    '''
     def __init__(self, input_filename):
         '''Default constructor.
         
         :param input_filename:
-            The name of the input file with the B(H) data
+            The name of the input json file with the B(H) data
 
         :return:
             None.
         '''
 
-        mat_data = pd.read_csv(input_filename)
+        # Opening file
+        with open(input_filename) as f:
 
-        self.B_data = mat_data['B(T)'].values
-        self.H_data = mat_data['H(A/m)'].values
+            # return data as a dictionary
+            mat_data = json.load(f)
+
+        self.B_data = np.array(mat_data['BH_data']['B(T)'])
+        self.H_data = np.array(mat_data['BH_data']['H(A/m)'])
 
         self.initialize_interpolation()
 
@@ -475,7 +484,8 @@ class Reluctance():
         return
 
 class ConstantReluctance():
-
+    '''A python class to model a constant reluctance.'''
+    
     def __init__(self, value):
         '''Default constructor.
         

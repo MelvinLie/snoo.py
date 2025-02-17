@@ -241,6 +241,34 @@ class RacetrackCoil():
 
         return segs_ret
     
+    def get_length(self, one_layer=True):
+        '''Compute the length of the coil.
+
+        :param one_layer:
+            Set this flag true if you like to get the length of a single layer.
+            Default = True.
+        
+        :return:
+            The length in m.
+        '''
+
+        # get all segments
+        segs = self.get_segments()
+
+        # compute the lengths of the segments
+        lens = np.sqrt((segs[:, 3] - segs[:, 0])**2
+                       + (segs[:, 4] - segs[:, 1])**2
+                       + (segs[:, 5] - segs[:, 2])**2)
+        
+        # sum up to get the overall length
+        length = np.sum(lens)
+
+        # divide by the number of layers
+        if one_layer:
+            length /= len(self.y)
+
+        return length
+
 
     def plot_mpl(self, ax):
         '''Plot the geometry in a matplotlib axes object.
