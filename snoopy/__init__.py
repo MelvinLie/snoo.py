@@ -3,10 +3,12 @@ from .laplace_subdomain_solver import *
 from .geometry_tools import *
 from .mesh_tools import *
 from .curl_curl_assembler import *
+from .curl_curl_assembler_diluted import *
 from .plot_tools import *
 from .evaluators import *
 from .materials import *
 from .mvp_solver import *
 from .red_mvp_solver import *
+from .red_mvp_solver_diluted import *
 from .racetrack_coil import *
 from .SHiP_functions import *

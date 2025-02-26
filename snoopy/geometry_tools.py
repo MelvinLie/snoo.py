@@ -498,6 +498,211 @@ def add_SHIP_iron_core(model, X_core_1, X_core_2, Y_core_1, Y_core_2,
 
     return vol_1
 
+def add_SHIP_iron_yoke_diluted_wing(model, X_mgap_1, X_core_1, X_void_1, X_yoke_1,
+                        X_mgap_2, X_core_2, X_void_2, X_yoke_2,
+                        Y_core_1, Y_void_1, Y_yoke_1,
+                        Y_core_2, Y_void_2, Y_yoke_2,
+                        Z_len, 
+                        Z_pos=0.0,
+                        lc=2e-1,
+                        lc_inner=-1,
+                        reflect_xz=False):
+    '''Add an iron yoke for the SHiP project to a gmsh model. This function is used for the case
+    where the wing is diluted.
+    
+    :param X_mgap_1:
+        The size of the horizontal gap. (entrance)
+
+    :param X_core_1:
+        The horizontal coordinate of the end of the iron core (entrance).
+
+    :param X_void_1:
+        The horizontal coordinate of the end of the void region (entrance).
+
+    :param X_yoke_1:
+        The horizontal coordinate of the end of the magnet end (entrance).
+
+    :param X_mgap_2:
+        The size of the horizontal gap. (exit)
+
+    :param X_core_2:
+        The horizontal coordinate of the end of the iron core (exit).
+
+    :param X_void_2:
+        The horizontal coordinate of the end of the void region (exit).
+
+    :param X_yoke_2:
+        The horizontal coordinate of the end of the magnet end (exit).
+
+    :param Y_void_1:
+        The vertical coordinate of the end of the void region. (entrance)
+
+    :param Y_yoke_1:
+        The vertical coordinate of the end of the iron yoke (entrance).
+
+    :param Y_void_2:
+        The vertical coordinate of the end of the void region (exit).
+
+    :param Y_yoke_2:
+        The horizontal coordinate of the end of the iron yoke (exit).
+
+    :param Z_len:
+        The length of the magnet in the z direction.
+
+    :param Z_pos:
+        The position of the magnet in the z direction.
+
+    :param show:
+        Set this flag to show the mesh in the gmsh gui.
+
+    :param lc:
+        A length scale parameter to control the mesh size.
+
+    :param lc_inner:
+        The legth scale parameter applied in the inner of the iron domain.
+        If negative it is ignored.
+
+    :param reflect_xz:
+        Reflect the fomain in the xz plane.
+
+    :return:
+        The gmsh model object as well as the labels of the physical groups for the two terminals.
+    '''
+
+    if lc_inner < 0:
+        lc_inner = lc
+
+    # the z position of the entrance
+    Z_1 = Z_pos
+
+    # the z position of the exit
+    Z_2 = Z_1 + Z_len
+
+    # THIS IS THE CORE
+
+    # make the points in the xy plane (entrance)
+    p1_1 = model.occ.addPoint(X_mgap_1, 0.0, Z_1, lc)
+    p2_1 = model.occ.addPoint(X_core_1, 0.0, Z_1, lc)
+    p3_1 = model.occ.addPoint(X_core_1, Y_core_1, Z_1, lc)
+    p4_1 = model.occ.addPoint(X_yoke_1, Y_core_1, Z_1, lc)
+    p5_1 = model.occ.addPoint(X_yoke_1, Y_yoke_1, Z_1, lc)
+    p6_1 = model.occ.addPoint(X_mgap_1, Y_yoke_1, Z_1, lc)
+
+    # connect the keypoints by lines (entrance)
+    l1_1 = model.occ.addLine(p1_1, p2_1)
+    l2_1 = model.occ.addLine(p2_1, p3_1)
+    l3_1 = model.occ.addLine(p3_1, p4_1)
+    l4_1 = model.occ.addLine(p4_1, p5_1)
+    l5_1 = model.occ.addLine(p5_1, p6_1)
+    l6_1 = model.occ.addLine(p6_1, p1_1)
+
+    # make the points in the xy plane (exit)
+    p1_2 = model.occ.addPoint(X_mgap_2, 0.0, Z_2, lc)
+    p2_2 = model.occ.addPoint(X_core_2, 0.0, Z_2, lc)
+    p3_2 = model.occ.addPoint(X_core_2, Y_core_2, Z_2, lc)
+    p4_2 = model.occ.addPoint(X_yoke_2, Y_core_2, Z_2, lc)
+    p5_2 = model.occ.addPoint(X_yoke_2, Y_yoke_2, Z_2, lc)
+    p6_2 = model.occ.addPoint(X_mgap_2, Y_yoke_2, Z_2, lc)
+
+    # connect the keypoints by lines (exit)
+    l1_2 = model.occ.addLine(p1_2, p2_2)
+    l2_2 = model.occ.addLine(p2_2, p3_2)
+    l3_2 = model.occ.addLine(p3_2, p4_2)
+    l4_2 = model.occ.addLine(p4_2, p5_2)
+    l5_2 = model.occ.addLine(p5_2, p6_2)
+    l6_2 = model.occ.addLine(p6_2, p1_2)
+
+    # connect the entrance and exit by lines
+    l1_12 = model.occ.addLine(p1_1, p1_2)
+    l2_12 = model.occ.addLine(p2_1, p2_2)
+    l3_12 = model.occ.addLine(p3_1, p3_2)
+    l4_12 = model.occ.addLine(p4_1, p4_2)
+    l5_12 = model.occ.addLine(p5_1, p5_2)
+    l6_12 = model.occ.addLine(p6_1, p6_2)
+
+    # make all curve loops
+    c1 = model.occ.addCurveLoop([l1_1, l2_1, l3_1, l4_1, l5_1, l6_1])
+    c2 = model.occ.addCurveLoop([l1_2, l2_2, l3_2, l4_2, l5_2, l6_2])
+
+    c3 = model.occ.addCurveLoop([l1_1, l2_12, l1_2, l1_12])
+    c4 = model.occ.addCurveLoop([l2_1, l3_12, l2_2, l2_12])
+    c5 = model.occ.addCurveLoop([l3_1, l4_12, l3_2, l3_12])
+    c6 = model.occ.addCurveLoop([l4_1, l5_12, l4_2, l4_12])
+    c7 = model.occ.addCurveLoop([l5_1, l6_12, l5_2, l5_12])
+    c8 = model.occ.addCurveLoop([l6_1, l1_12, l6_2, l6_12])
+
+    # make the surfaces
+    s1 = model.occ.addPlaneSurface([c1])
+    s2 = model.occ.addPlaneSurface([c2])
+    s3 = model.occ.addPlaneSurface([c3])
+    s4 = model.occ.addPlaneSurface([c4])
+    s5 = model.occ.addPlaneSurface([c5])
+    s6 = model.occ.addPlaneSurface([c6])
+    s7 = model.occ.addPlaneSurface([c7])
+    s8 = model.occ.addPlaneSurface([c8])
+
+    # make the iron and air domains
+    sl_1 = model.occ.addSurfaceLoop([s1, s2, s3, s4, s5, s6, s7, s8])
+    vol_1 = model.occ.addVolume([sl_1])
+
+    model.occ.synchronize()
+
+    # THIS IS THE WING
+    pp1_1 = model.occ.addPoint(X_void_1, 0.0, Z_1, lc)
+    pp2_1 = model.occ.addPoint(X_yoke_1, 0.0, Z_1, lc)
+    pp3_1 = model.occ.addPoint(X_yoke_1, Y_void_1, Z_1, lc)
+    pp4_1 = model.occ.addPoint(X_void_1, Y_void_1, Z_1, lc)
+
+    ll1_1 = model.occ.addLine(pp1_1, pp2_1)
+    ll2_1 = model.occ.addLine(pp2_1, pp3_1)
+    ll3_1 = model.occ.addLine(pp3_1, pp4_1)
+    ll4_1 = model.occ.addLine(pp4_1, pp1_1)
+
+    pp1_2 = model.occ.addPoint(X_void_2, 0.0, Z_2, lc)
+    pp2_2 = model.occ.addPoint(X_yoke_2, 0.0, Z_2, lc)
+    pp3_2 = model.occ.addPoint(X_yoke_2, Y_void_2, Z_2, lc)
+    pp4_2 = model.occ.addPoint(X_void_2, Y_void_2, Z_2, lc)
+
+    ll1_2 = model.occ.addLine(pp1_2, pp2_2)
+    ll2_2 = model.occ.addLine(pp2_2, pp3_2)
+    ll3_2 = model.occ.addLine(pp3_2, pp4_2)
+    ll4_2 = model.occ.addLine(pp4_2, pp1_2)
+
+    ll1_12 = model.occ.addLine(pp1_1, pp1_2)
+    ll2_12 = model.occ.addLine(pp2_1, pp2_2)
+    ll3_12 = model.occ.addLine(pp3_1, pp3_2)
+    ll4_12 = model.occ.addLine(pp4_1, pp4_2)
+
+    cc1 = model.occ.addCurveLoop([ll1_1, ll2_1, ll3_1, ll4_1])
+    cc2 = model.occ.addCurveLoop([ll1_2, ll2_2, ll3_2, ll4_2])
+
+    cc3 = model.occ.addCurveLoop([ll1_1, ll2_12, ll1_2, ll1_12])
+    cc4 = model.occ.addCurveLoop([ll2_1, ll3_12, ll2_2, ll2_12])
+    cc5 = model.occ.addCurveLoop([ll3_1, ll4_12, ll3_2, ll3_12])
+    cc6 = model.occ.addCurveLoop([ll4_1, ll1_12, ll4_2, ll4_12])
+    
+    ss1 = model.occ.addPlaneSurface([cc1])
+    ss2 = model.occ.addPlaneSurface([cc2])
+    ss3 = model.occ.addPlaneSurface([cc3])
+    ss4 = model.occ.addPlaneSurface([cc4])
+    ss5 = model.occ.addPlaneSurface([cc5])
+    ss6 = model.occ.addPlaneSurface([cc6])
+
+    # make the iron and air domains
+    sl_2 = model.occ.addSurfaceLoop([ss1, ss2, ss3, ss4, ss5, ss6])
+    vol_2 = model.occ.addVolume([sl_2])
+
+    model.occ.synchronize()
+
+    if reflect_xz:
+
+        model.occ.mirror([(3, vol_1), (3, vol_2)], 0., 1., 0., 0.)
+        model.occ.synchronize()
+        # dim_tags, map = model.occ.fragment(vol_m, [(3, vol_1)])
+        # model.occ.synchronize()
+
+    return vol_1, vol_2
+
 def compute_area_polygon(kp, isclosed=True):
     '''Compute the area of a non-intersecting (default = closed) polygon.
     Closed means that the first and last keypoints is identical. If this

@@ -15,6 +15,9 @@ cdef extern from "ctools.h":
 	ctypedef struct reluctance:
 		pass
 
+	ctypedef struct dilution:
+		pass
+
 	triplet_list* make_triplet_list(int number_of_triplets,
                                     int *row_ptr,
                                     int *col_ptr,
@@ -42,6 +45,13 @@ cdef extern from "ctools.h":
 										int num_intervals,
 										double *coefficients,
 										double *knots)
+
+	dilution* make_dilution(double c_num,
+									double m_num,
+									double c_den,
+									double m_den)
+
+	double eval_dilution(double z, dilution* dil)
 
 	double eval_cox_de_boor(int i, int k, double *t, double x)
 	double eval_cox_de_boor_derivative(int i, int k, double *t, double x)
@@ -114,6 +124,21 @@ cdef extern from "ctools.h":
 						int *orientations_c,
 						double *x_c)
 						
+	void compute_K_dK_Hcurl_red_dil(triplet_list *triplets_K, 
+						triplet_list *triplets_dK,
+						double *rhs_c,
+						const dilution *dil,
+						const int *glob_ids_c,
+						const reluctance *rel_c,
+						const mesh *msh,
+						const quad_3D *quad,
+						const double *curls_c,
+						const double *phi_c,
+						const double *d_phi_c,
+						const int *orientations_c,
+						const double *x_c,
+						const double *B_s)
+
 	void compute_B_line_segs(double* B_ret,
 				const double *src_ptr,
 				const double *tar_ptr,

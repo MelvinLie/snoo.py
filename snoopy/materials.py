@@ -534,3 +534,67 @@ class ConstantReluctance():
         '''
 
         return 0
+
+class Dilution():
+    '''A class to model the dilution of the iron material.'''
+
+    def __init__(self, x_mgap_1, x_core_1, x_void_1, x_yoke_1,
+                       x_mgap_2, x_core_2, x_void_2, x_yoke_2,
+                       z_pos, z_len, mag_type=1):
+        '''Initialize the dilution.
+
+        :param x_mgap_1:
+            The x coordinate of the middle gap at the entrance of the magnet.
+        
+        :param x_core_1:
+            The x coordinate of the core at the entrance of the magnet.
+
+        :param x_void_1:
+            The x coordinate of the void at the entrance of the magnet.
+
+        :param x_yoke_1:
+            The x coordinate of the yoke at the entrance of the magnet.
+
+        :param x_mgap_2:
+            The x coordinate of the middle gap at the exit of the magnet.
+        
+        :param x_core_2:
+            The x coordinate of the core at the exit of the magnet.
+
+        :param x_void_2:
+            The x coordinate of the void at the exit of the magnet.
+
+        :param x_yoke_2:
+            The x coordinate of the yoke at the exit of the magnet.
+
+        :param mag_type:
+            The magnet type. Either 1 or 3. See magnet types.
+            
+        :return:
+            None.
+        '''
+
+        # get the slopes (m) and intercepts (b)
+        m_yoke = (x_yoke_2-x_yoke_1)/z_len
+        m_core = (x_core_2-x_core_1)/z_len
+        m_void = (x_void_2-x_void_1)/z_len
+        m_mgap = (x_mgap_2-x_mgap_1)/z_len
+        c_yoke = (x_yoke_1*(z_len + z_pos) - x_yoke_2*z_pos)/z_len
+        c_core = (x_core_1*(z_len + z_pos) - x_core_2*z_pos)/z_len
+        c_void = (x_void_1*(z_len + z_pos) - x_void_2*z_pos)/z_len
+        c_mgap = (x_mgap_1*(z_len + z_pos) - x_mgap_2*z_pos)/z_len
+
+        if mag_type == 1:
+            self.m_num = m_yoke - m_void
+            self.m_den = m_core - m_mgap
+            self.c_num = c_yoke - c_void
+            self.c_den = c_core - c_mgap
+
+        elif mag_type == 3:
+            self.m_num = m_core - m_mgap
+            self.m_den = m_yoke - m_void
+            self.c_num = c_core - c_mgap
+            self.c_den = c_yoke - c_void
+
+        else:
+            print(f"Magnet type {mag_type} unknown!")

@@ -63,6 +63,15 @@ typedef struct reluctance{
 
 } reluctance;
 
+typedef struct dilution{
+
+  double c_num;
+  double m_num;
+  double c_den;
+  double m_den;
+
+} dilution;
+
 struct triplet_list* make_triplet_list(int number_of_triplets,
                                        int *row_ptr,
                                        int *col_ptr,
@@ -90,6 +99,13 @@ struct reluctance* make_reluctance(int type_spec,
                                        int num_intervals,
                                        double *coefficients,
                                        double *knots);
+
+struct dilution* make_dilution(double c_num,
+                                 double m_num,
+                                 double c_den,
+                                 double m_den);
+
+double eval_dilution(const double z, const dilution* dil);
 
 double eval_pchip_interpolator(const int num_intervals, const double *c, const double *x_k, const double x);
 double eval_pchip_interpolator_derivative(const int num_intervals, const double *c, const double *x_k, const double x);
@@ -191,6 +207,21 @@ void compute_B_Hcurl(double *points,
                     double *d_phi_c,
                     int *orientations_c,
                     double *x_c);
+
+void compute_K_dK_Hcurl_red_dil(triplet_list *triplets_K, 
+                    triplet_list *triplets_dK,
+                    double *rhs_c,
+                    const dilution *dil,
+                    const int *glob_ids_c,
+                    const reluctance *rel_c,
+                    const mesh *msh,
+                    const quad_3D *quad,
+                    const double *curls_c,
+                    const double *phi_c,
+                    const double *d_phi_c,
+                    const int *orientations_c,
+                    const double *x_c,
+                    const double *B_s);
 
 void compute_B_line_segs(double* B_ret,
 			const double *src_ptr,
