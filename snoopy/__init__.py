@@ -12,3 +12,4 @@ from .red_mvp_solver import *
 from .red_mvp_solver_diluted import *
 from .racetrack_coil import *
 from .SHiP_functions import *
+from .brick_field import *

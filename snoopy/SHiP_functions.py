@@ -64,13 +64,13 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
     kp_1 = np.zeros((5, 2))
     kp_2 = np.zeros((5, 2))
     kp_3 = np.zeros((5, 2))
-    
+
     # get the parameters for convinience
     X_mgap_1 = parameters_df["Xmgap1(m)"][df_index]
     X_core_1 = parameters_df["Xcore1(m)"][df_index]
     X_void_1 = parameters_df["Xvoid1(m)"][df_index]
     X_yoke_1 = parameters_df["Xyoke1(m)"][df_index]
-    
+
     X_mgap_2 = parameters_df["Xmgap2(m)"][df_index]
     X_core_2 = parameters_df["Xcore2(m)"][df_index]
     X_void_2 = parameters_df["Xvoid2(m)"][df_index]
@@ -143,7 +143,7 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
     valid_geometry = True
 
     if parameters_df["yoke_type"][df_index] == 'Mag1' or parameters_df["yoke_type"][df_index] == 'Mag2':
-        
+
         # the type 1 or 2 magnet
         # the coil is wound around the core
 
@@ -201,7 +201,8 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
 
 def compute_prices(magnet_parameters, df_index, M_iron,
                    M_coil, Q, electricity_costs=5.0/72000.0, runtime=72000,
-                   materials_directory='files/materials'):
+                   materials_directory='files/materials',
+                   price_peanuts=0.5e-3):
     '''Compute the costs of a magnet given the parameters iron mass,
     coil mass and power consumption.
     
@@ -229,6 +230,9 @@ def compute_prices(magnet_parameters, df_index, M_iron,
 
     :param materials_directory:
         The directory where to find the materials.
+
+    :param price_peanuts:
+        The price of a peanut in peanuts/kCHF. Default is 0.5e-3. Yes, peanuts are expensive.
     
     :return:
         The costs for iron, coil and electricity.
@@ -242,12 +246,12 @@ def compute_prices(magnet_parameters, df_index, M_iron,
         coil_material_data = json.load(f)
 
     C_iron = 1e-3*M_iron*(iron_material_data["material_cost(CHF/kg)"]
-                     +  iron_material_data["manufacturing_cost(CHF/kg)"])
-    
+                     +  iron_material_data["manufacturing_cost(CHF/kg)"])*price_peanuts
+
     C_coil = 1e-3*M_coil*(coil_material_data["material_cost(CHF/kg)"]
-                     +  coil_material_data["manufacturing_cost(CHF/kg)"])
-    
-    C_edf = Q*electricity_costs*runtime
+                     +  coil_material_data["manufacturing_cost(CHF/kg)"])*price_peanuts
+
+    C_edf = Q*electricity_costs*runtime*price_peanuts
 
     return C_iron, C_coil, C_edf
 
@@ -323,8 +327,6 @@ def get_vector_field_mag_1(parameters,
     with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
         iron_material_data = json.load(f)
 
-    reluctance_air = snoopy.ConstantReluctance(1e7/4/np.pi)
-
     with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
         conductor_material_data = json.load(f)
 
@@ -376,10 +378,13 @@ def get_vector_field_mag_1(parameters,
     field_density = 0.5*parameters["field_density"][df_index]
 
     if use_diluted_steel:
-       # setup the dilution
-       dilution_wing = snoopy.Dilution(X_mgap_1, X_core_1, X_void_1, X_yoke_1,
-                                  X_mgap_2, X_core_2, X_void_2, X_yoke_2,
-                                  Z_pos, Z_len)
+        # setup the dilution
+        dilution_wing = snoopy.Dilution(X_mgap_1, X_core_1, X_void_1, X_yoke_1,
+                                        X_mgap_2, X_core_2, X_void_2, X_yoke_2,
+                                        Z_pos, Z_len)
+
+        # print(f"dilution num = {dilution_wing.m_num:.1f}z + {dilution_wing.c_num:.1f}")
+        # print(f"dilution den = {dilution_wing.m_den:.1f}z + {dilution_wing.c_den:.1f}")
 
     # the limits in x, y, and z
     lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -389,10 +394,10 @@ def get_vector_field_mag_1(parameters,
 
     # the maximum number of turns
     max_turns = np.int64(parameters["max_turns"][df_index])
-   
+
     if use_diluted_steel:
-      # the iron domain
-      vol_iron_1, vol_iron_2 = snoopy.add_SHIP_iron_yoke_diluted_wing(gmsh.model, X_mgap_1,
+        # the iron domain
+        vol_iron_1, vol_iron_2 = snoopy.add_SHIP_iron_yoke_diluted_wing(gmsh.model, X_mgap_1,
                                                                      X_core_1,
                                                                      X_void_1,
                                                                      X_yoke_1,
@@ -406,41 +411,41 @@ def get_vector_field_mag_1(parameters,
                                                                      Y_core_2,
                                                                      Y_void_2,
                                                                      Y_yoke_2,
-                                                                     Z_len, 
+                                                                     Z_len,
                                                                      Z_pos=Z_pos,
                                                                      lc=lc,
                                                                      lc_inner=0.2*lc)
 
-      # the iron domain
-      vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
-      gmsh.model.occ.synchronize()
+        # the iron domain
+        vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+        gmsh.model.occ.synchronize()
 
-      # fragment perfoms something like a union
-      fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_iron_1),(3, vol_iron_2)])
-      gmsh.model.occ.synchronize()
+        # fragment perfoms something like a union
+        fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_iron_1),(3, vol_iron_2)])
+        gmsh.model.occ.synchronize()
 
-      # we get the domains of the fragmentation
-      dom_iron = fragments[0][1]
-      dom_wing = fragments[1][1]
-      dom_air = fragments[2][1]
+        # we get the domains of the fragmentation
+        dom_iron = fragments[0][1]
+        dom_wing = fragments[1][1]
+        dom_air = fragments[2][1]
 
-      # and we define physical domains
-      gmsh.model.addPhysicalGroup(3, [dom_iron, dom_wing], 1, name = "Iron")
-      gmsh.model.occ.synchronize()
-      gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
-      gmsh.model.occ.synchronize()
+        # and we define physical domains
+        gmsh.model.addPhysicalGroup(3, [dom_iron, dom_wing], 1, name = "Iron")
+        gmsh.model.occ.synchronize()
+        gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+        gmsh.model.occ.synchronize()
 
-      # get the volume of the iron domain
-      M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
-      M_iron += 4*gmsh.model.occ.getMass(3, dom_wing)*iron_material_data["density(g/m3)"]
+        # get the volume of the iron domain
+        M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
+        M_iron += 4*gmsh.model.occ.getMass(3, dom_wing)*iron_material_data["density(g/m3)"]
 
     else:
-      # the iron domain
-      vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
+        # the iron domain
+        vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
                                                       X_core_1,
                                                       X_void_1,
                                                       X_yoke_1,
-                                                      X_mgap_2, 
+                                                      X_mgap_2,
                                                       X_core_2,
                                                       X_void_2,
                                                       X_yoke_2,
@@ -456,26 +461,26 @@ def get_vector_field_mag_1(parameters,
                                                       lc_inner=0.2*lc,
                                                       yoke_type=1)
 
-      # the iron domain
-      vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
-      gmsh.model.occ.synchronize()
+        # the iron domain
+        vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+        gmsh.model.occ.synchronize()
 
-      # fragment perfoms something like a union
-      fragments, _ = gmsh.model.occ.fragment([(3, vol_iron)], [(3, vol_air)])
-      gmsh.model.occ.synchronize()
+        # fragment perfoms something like a union
+        fragments, _ = gmsh.model.occ.fragment([(3, vol_iron)], [(3, vol_air)])
+        gmsh.model.occ.synchronize()
 
-      # we get the domains of the fragmentation
-      dom_iron = fragments[0][1]
-      dom_air = fragments[1][1]
+        # we get the domains of the fragmentation
+        dom_iron = fragments[0][1]
+        dom_air = fragments[1][1]
 
-      # and we define physical domains
-      gmsh.model.addPhysicalGroup(3, [dom_iron], 1, name = "Iron")
-      gmsh.model.occ.synchronize()
-      gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
-      gmsh.model.occ.synchronize()
+        # and we define physical domains
+        gmsh.model.addPhysicalGroup(3, [dom_iron], 1, name = "Iron")
+        gmsh.model.occ.synchronize()
+        gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+        gmsh.model.occ.synchronize()
 
-      # get the volume of the iron domain
-      M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
+        # get the volume of the iron domain
+        M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
 
     # we then generate the mesh
     gmsh.model.mesh.generate(3)
@@ -541,7 +546,7 @@ def get_vector_field_mag_1(parameters,
 
     # the horizontal slot size
     slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
-    
+
     # this is the space we have available for the coils
     A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
 
@@ -549,7 +554,10 @@ def get_vector_field_mag_1(parameters,
     A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
     # we compute the current density (for monitoring reasons)
-    current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
+    if current == 0.0:
+        current_density = 0.0
+    else:
+        current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
 
     # the turn perimeter
     turn_perimeter = 0.0
@@ -566,7 +574,6 @@ def get_vector_field_mag_1(parameters,
                        [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
                        [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
-   
         coil_list.append(snoopy.RacetrackCoil(kp, y, coil_radius, current/num_cond))
 
         turn_perimeter = coil_list[-1].get_length()
@@ -583,23 +590,25 @@ def get_vector_field_mag_1(parameters,
                        [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
                        [ X_mgap_1,                       Z_pos-yoke_spacer - ins - coil_radius     ],
                        [ X_mgap_1 - yoke_spacer - ins - coil_radius,   Z_pos                       ]])
-      
-      
+
+
         kp_2 = kp_1.copy()
         kp_2[:, 0] *= -1.0
-      
+
         coil_list.append(snoopy.RacetrackCoil(kp_1, y, coil_radius, current/num_cond))
         coil_list.append(snoopy.RacetrackCoil(kp_2, y, coil_radius, current/num_cond))
 
         turn_perimeter = coil_list[0].get_length() +  coil_list[1].get_length()
-   
+
     # this is the available coil volume
     M_coil = A_coil*turn_perimeter*conductor_material_data['density(g/m3)']
 
     # ====================================================
     # The power consumption
-
-    Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+    if current == 0:
+        Q = 0.0
+    else:
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
 
     if plot_geo:
 
@@ -609,10 +618,10 @@ def get_vector_field_mag_1(parameters,
 
         pl.subplot(0, 0)
         if use_diluted_steel:
-           snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
-           snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+            snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+            snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
         else:
-           snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+            snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
 
         snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
         for coil in coil_list:
@@ -635,18 +644,25 @@ def get_vector_field_mag_1(parameters,
     # ====================================================
     # Solve the problem
     if use_diluted_steel:
-      solver = snoopy.RedMVPSolverDiluted(gmsh.model, coil_list, 
-                                    [dom_iron, dom_wing], [dom_air],
-                                    [reluctance_iron, reluctance_iron],
-                                    [None, dilution_wing],
-                                    quad_order=quad_order, max_newton_iterations=150)
+        solver = snoopy.RedMVPSolverDiluted(gmsh.model, coil_list,
+                                      [dom_iron, dom_wing], [dom_air],
+                                      [reluctance_iron, reluctance_iron],
+                                      [None, dilution_wing],
+                                      quad_order=quad_order, max_newton_iterations=25)
+      
     else:
-      solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
-                                    [dom_iron], [dom_air],
-                                    [reluctance_iron],
-                                    quad_order=quad_order, max_newton_iterations=150)
+        solver = snoopy.RedMVPSolver(gmsh.model, coil_list,
+                                      [dom_iron], [dom_air],
+                                      [reluctance_iron],
+                                      quad_order=quad_order, max_newton_iterations=25)
    
-    x = solver.solve()
+
+    # ====================================================
+    # If current is zero, don't solve
+    if current == 0.0:
+        x = np.zeros((solver.num_dofs_mvp, ))
+    else:
+        x = solver.solve()
 
 
     # ====================================================
@@ -705,7 +721,10 @@ def get_vector_field_mag_1(parameters,
        # ====================================================
        # Evaluate at the given positions
 
-        B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
+        if use_diluted_steel:
+            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
+        else:
+            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
 
         B_coil = 0.0*B_iron
         for coil in coil_list:
@@ -737,131 +756,129 @@ def get_vector_field_mag_1(parameters,
 
 
 def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
-                  geo_th=1e-5, run_gmsh=False, plot_geo=False,
-                  plot_result=False, result_directory='none', result_spec='',
-                  eval_pos=np.zeros((0, 3)),
-                  materials_directory='files/materials',
-                  quad_order=8,
-                  max_coil_size=0.05):
-   '''Get the vector point cloud for the magnet 2 template.
+                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
+                   plot_result=False, result_directory='none', result_spec='',
+                   eval_pos=np.zeros((0, 3)),
+                   materials_directory='files/materials',
+                   quad_order=8,
+                   max_coil_size=0.05):
+    '''Get the vector point cloud for the magnet 2 template.
     
-   :params parameters:
-      The magnet parameters as pandas dataframe. See the
-      SHiP documentation for details.
+    :params parameters:
+       The magnet parameters as pandas dataframe. See the
+       SHiP documentation for details.
 
-   :param df_index:
-      The row in the pandas parameter dataframe.
+    :param df_index:
+        The row in the pandas parameter dataframe.
    
-   :param lc:
-      The mesh size parameter. Default = 0.5.
+    :param lc:
+        The mesh size parameter. Default = 0.5.
 
-   :param geo_th:
-      A threshold for the identification of boundary surfaces.
-      Adjust it if You generate very small features.
+    :param geo_th:
+        A threshold for the identification of boundary surfaces.
+        Adjust it if You generate very small features.
 
-   :param run_gmsh:
-      Set this flag to true if You like to run the gmsh gui after the mesh
-      was generated.
+    :param run_gmsh:
+        Set this flag to true if You like to run the gmsh gui after the mesh
+        was generated.
 
-   :param plot_geo:
-      Set this flag to true if You like to generate a 3D plot of the geometry.
+    :param plot_geo:
+        Set this flag to true if You like to generate a 3D plot of the geometry.
 
-   :param plot_result:
-      Set this flag to true if You like to generate a 3D plot of the result.
+    :param plot_result:
+        Set this flag to true if You like to generate a 3D plot of the result.
 
-   :param result_directory:
-      The result directory in case You like to store the solution somewhere.
+    :param result_directory:
+        The result directory in case You like to store the solution somewhere.
 
-   :param result_spec:
-      A specifyer for the result files.
+    :param result_spec:
+        A specifyer for the result files.
 
-   :param eval_pos:
-      Additional positions to be evaluated. Default empty.
+    :param eval_pos:
+        Additional positions to be evaluated. Default empty.
 
-   :params materials_directory:
-      The directory where the material files are stored. Default files/materials.
+    :params materials_directory:
+        The directory where the material files are stored. Default files/materials.
 
-   :param quad_order:
-      The quadrature order. Default 8.
+    :param quad_order:
+        The quadrature order. Default 8.
 
-   :param max_coil_size:
-      The maximum coil size in m2.
+    :param max_coil_size:
+        The maximum coil size in m2.
 
-   :return:
-      The positions and field components in a 3D numpy grid.
-   '''
+    :return:
+        The positions and field components in a 3D numpy grid.
+    '''
 
-   # launch time measurement
-   t_s = time.time()
+    # launch time measurement
+    t_s = time.time()
 
-   # ====================================================
-   # read the material data
-   reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
-                                                    parameters["material"][df_index]))
+    # ====================================================
+    # read the material data
+    reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
+                                                     parameters["material"][df_index]))
 
-   with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
-      iron_material_data = json.load(f)
+    with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
+        iron_material_data = json.load(f)
 
-   reluctance_air = snoopy.ConstantReluctance(1e7/4/np.pi)
+    with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
+        conductor_material_data = json.load(f)
 
-   with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
-      conductor_material_data = json.load(f)
+    # get the target current density
+    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
 
-   # get the target current density
-   J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    # ====================================================
+    # mesh generation
+    gmsh.initialize()
+    gmsh.model.add("make mesh mag 2 template")
 
-   # ====================================================
-   # mesh generation
-   gmsh.initialize()
-   gmsh.model.add("make mesh mag 2 template")
+    # we get the geometry parameters as variables for convinience
+    X_core_1 = parameters["Xcore1(m)"][df_index]
+    X_core_2 = parameters["Xcore2(m)"][df_index]
 
-   # we get the geometry parameters as variables for convinience
-   X_core_1 = parameters["Xcore1(m)"][df_index]
-   X_core_2 = parameters["Xcore2(m)"][df_index]
+    X_void_1 = parameters["Xvoid1(m)"][df_index]
+    X_void_2 = parameters["Xvoid2(m)"][df_index]
 
-   X_void_1 = parameters["Xvoid1(m)"][df_index]
-   X_void_2 = parameters["Xvoid2(m)"][df_index]
+    X_yoke_1 = parameters["Xyoke1(m)"][df_index]
+    X_yoke_2 = parameters["Xyoke2(m)"][df_index]
 
-   X_yoke_1 = parameters["Xyoke1(m)"][df_index]
-   X_yoke_2 = parameters["Xyoke2(m)"][df_index]
+    Y_core_1 = parameters["Ycore1(m)"][df_index]
+    Y_core_2 = parameters["Ycore2(m)"][df_index]
 
-   Y_core_1 = parameters["Ycore1(m)"][df_index]
-   Y_core_2 = parameters["Ycore2(m)"][df_index]
+    Y_void_1 = parameters["Yvoid1(m)"][df_index]
+    Y_void_2 = parameters["Yvoid2(m)"][df_index]
 
-   Y_void_1 = parameters["Yvoid1(m)"][df_index]
-   Y_void_2 = parameters["Yvoid2(m)"][df_index]
+    Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
+    Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
 
-   Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
-   Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
+    Z_len = parameters["Z_len(m)"][df_index]
+    Z_pos = parameters["Z_pos(m)"][df_index]
 
-   Z_len = parameters["Z_len(m)"][df_index]
-   Z_pos = parameters["Z_pos(m)"][df_index]
+    delta_x = parameters["delta_x(m)"][df_index]
+    delta_y = parameters["delta_y(m)"][df_index]
+    delta_z = parameters["delta_z(m)"][df_index]
 
-   delta_x = parameters["delta_x(m)"][df_index]
-   delta_y = parameters["delta_y(m)"][df_index]
-   delta_z = parameters["delta_z(m)"][df_index]
-   
-   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
+    yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(mm)"][df_index]*1e-3
+    ins = parameters["insulation(mm)"][df_index]*1e-3
 
-   current = parameters["NI(A)"][df_index]
+    current = parameters["NI(A)"][df_index]
 
-   coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
+    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
-   field_density = 0.5*parameters["field_density"][df_index]
+    field_density = 0.5*parameters["field_density"][df_index]
 
-   # the maximum number of turns
-   max_turns = np.int64(parameters["max_turns"][df_index])
+    # the maximum number of turns
+    max_turns = np.int64(parameters["max_turns"][df_index])
 
-   # the limits in x, y, and z
-   lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
-   lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
-   z_min = Z_pos - delta_z
-   z_max = Z_pos + Z_len + delta_z
-   
-   # the core domain
-   vol_core = snoopy.add_SHIP_iron_core(gmsh.model, X_core_1,
+    # the limits in x, y, and z
+    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
+    lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
+    z_min = Z_pos - delta_z
+    z_max = Z_pos + Z_len + delta_z
+
+    # the core domain
+    vol_core = snoopy.add_SHIP_iron_core(gmsh.model, X_core_1,
                                                     X_core_2,
                                                     Y_core_1,
                                                     Y_core_2,
@@ -869,8 +886,8 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
                                                     Z_pos=Z_pos,
                                                     lc=0.3*lc)
 
-   # the yoke domain
-   vol_yoke = snoopy.add_SHIP_iron_yoke(gmsh.model, 0.0, X_core_1,
+    # the yoke domain
+    vol_yoke = snoopy.add_SHIP_iron_yoke(gmsh.model, 0.0, X_core_1,
                                                          X_void_1,
                                                          X_yoke_1,
                                                          0.0, 
@@ -889,77 +906,74 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
                                                          lc_inner=0.3*lc,
                                                          yoke_type=2)
 
-   # the iron domain
-   vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
-   gmsh.model.occ.synchronize()
+    # the iron domain
+    vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+    gmsh.model.occ.synchronize()
 
-   # fragment perfoms something like a union
-   fragments, _ = gmsh.model.occ.fragment([(3, vol_core)], [(3, vol_yoke), (3, vol_air)])
-   gmsh.model.occ.synchronize()
+    # fragment perfoms something like a union
+    fragments, _ = gmsh.model.occ.fragment([(3, vol_core)], [(3, vol_yoke), (3, vol_air)])
+    gmsh.model.occ.synchronize()
 
-   # we get the domains of the fragmentation
-   dom_core = fragments[0][1]
-   dom_yoke = fragments[2][1]
-   dom_air = fragments[1][1]
+    # we get the domains of the fragmentation
+    dom_core = fragments[0][1]
+    dom_yoke = fragments[2][1]
+    dom_air = fragments[1][1]
 
-   # and we define physical domains
-   gmsh.model.addPhysicalGroup(3, [dom_core, dom_yoke], 1, name = "Iron")
-   gmsh.model.occ.synchronize()
-   gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
-   gmsh.model.occ.synchronize()
+    # and we define physical domains
+    gmsh.model.addPhysicalGroup(3, [dom_core, dom_yoke], 1, name = "Iron")
+    gmsh.model.occ.synchronize()
+    gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+    gmsh.model.occ.synchronize()
 
-   # we then generate the mesh
-   gmsh.model.mesh.generate(3)
-   gmsh.model.occ.synchronize()
+    # we then generate the mesh
+    gmsh.model.mesh.generate(3)
+    gmsh.model.occ.synchronize()
 
-   # we now need to collect all Dirichlet boundaries
-   boundary_entities = gmsh.model.getEntities(2)
+    # we now need to collect all Dirichlet boundaries
+    boundary_entities = gmsh.model.getEntities(2)
 
-   # this list will store the boundary tags
-   dirichlet_boundaries = []
+    # this list will store the boundary tags
+    dirichlet_boundaries = []
 
-   for i, be in boundary_entities:
+    for i, be in boundary_entities:
 
-      min_uv, max_uv = gmsh.model.getParametrizationBounds(2, be)
-      u = 0.5*(max_uv[0] + min_uv[0])
-      v = 0.5*(max_uv[1] + min_uv[1])
+        min_uv, max_uv = gmsh.model.getParametrizationBounds(2, be)
+        u = 0.5*(max_uv[0] + min_uv[0])
+        v = 0.5*(max_uv[1] + min_uv[1])
 
-      coord = gmsh.model.getValue(2, be, [u, v])
-      normal = gmsh.model.getNormal(be, [u, v])
+        coord = gmsh.model.getValue(2, be, [u, v])
+        normal = gmsh.model.getNormal(be, [u, v])
 
-      if (abs(coord[0] - 0.0) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        if (abs(coord[0] - 0.0) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-      elif (abs(coord[0] - lim_x) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        elif (abs(coord[0] - lim_x) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-      elif (abs(coord[1] - lim_y) < geo_th and abs(abs(normal[1]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        elif (abs(coord[1] - lim_y) < geo_th and abs(abs(normal[1]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-      elif (abs(coord[2] - z_min) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        elif (abs(coord[2] - z_min) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-      elif (abs(coord[2] - z_max) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        elif (abs(coord[2] - z_max) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-   # add a physical group for this boundary condition
-   gmsh.model.addPhysicalGroup(2, dirichlet_boundaries, 1, name = "Dirichlet Boundary")
+    # add a physical group for this boundary condition
+    gmsh.model.addPhysicalGroup(2, dirichlet_boundaries, 1, name = "Dirichlet Boundary")
 
-   gmsh.model.occ.synchronize()
+    gmsh.model.occ.synchronize()
 
-   # get the volume of the iron domain
-   M_iron = 4*(gmsh.model.occ.getMass(3, dom_core)
+    # get the volume of the iron domain
+    M_iron = 4*(gmsh.model.occ.getMass(3, dom_core)
                + gmsh.model.occ.getMass(3, dom_yoke))*iron_material_data["density(g/m3)"]
-   
-   print('The iron mass is = {:.2f} t'.format(M_iron*1e-6))
 
-   if run_gmsh:
-      gmsh.fltk.run()
+    if run_gmsh:
+        gmsh.fltk.run()
 
-
-   # ====================================================
-   # Make a coil object
-   kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+    # ====================================================
+    # Make a coil object
+    kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
                   [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
                   [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
                   [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
@@ -968,157 +982,159 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
                   [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
                   [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
 
-   # determine the slot size
-   slot_size = 2*min(Y_core_1, Y_core_2)
+    # determine the slot size
+    slot_size = 2*min(Y_core_1, Y_core_2)
 
-   # determine the number of conductors
-   num_cond = np.int32(slot_size/2/(coil_radius+ins))
+    # determine the number of conductors
+    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
-   # do not allow more conductors than a certain amount
-   if num_cond > max_turns:
-      num_cond = max_turns
+    # do not allow more conductors than a certain amount
+    if num_cond > max_turns:
+        num_cond = max_turns
 
-   y = np.linspace(-0.5*slot_size + coil_radius + ins,
+    y = np.linspace(-0.5*slot_size + coil_radius + ins,
                     0.5*slot_size - coil_radius - ins, num_cond)
 
-   coil = snoopy.RacetrackCoil(kp, y, coil_radius, current/num_cond)
+    coil = snoopy.RacetrackCoil(kp, y, coil_radius, current/num_cond)
 
-   # the horizontal slot size
-   slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
+    # the horizontal slot size
+    slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
 
-   # this is the space we have available for the coils
-   A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    # this is the space we have available for the coils
+    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
 
-   # this is the coil size using the target current density
-   A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
+    # this is the coil size using the target current density
+    A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
-   # we compute the current density (for monitoring reasons)
-   current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
+    # we compute the current density (for monitoring reasons)
+    if current == 0.0:
+        current_density = 0.0
+    else:
+        current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
 
-   # the turn perimeter
-   turn_perimeter = coil.get_length()
+    # the turn perimeter
+    turn_perimeter = coil.get_length()
 
-   # this is the available coil volume
-   M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+    # this is the available coil volume
+    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
 
-   print('The coil volume is {:.2f} kg'.format(M_coil*1e-3))
+    # ====================================================
+    # The power consumption
+    if current == 0.0:
+        Q = 0.0
+    else:
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
 
-   # ====================================================
-   # The power consumption
+    if plot_geo:
+
+        # ====================================================
+        # Plot the magnet
+        pl = pv.Plotter(shape=(1, 1), off_screen=False)
+
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
+        coil.plot_pv(pl)
+        pl.show_grid()
+        pl.add_axes()
+
+        light_1 = pv.Light((1.5, 0.0, -1.2), (0, 0, 0), 'white')
+        light_2 = pv.Light((-0.15, 0.2, 0.1), (0, 0, 0), 'white')
+
+
+        pl.add_light(light_1)
+        pl.add_light(light_2)
+
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.show()
    
-   print('The current density is = {} A/mm2'.format(current_density*1e-6))
-
-   Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
-
-   print('The power consumption = {:.2f} W'.format(Q))
-
-   if plot_geo:
-
-      # ====================================================
-      # Plot the magnet
-      pl = pv.Plotter(shape=(1, 1), off_screen=False)
-
-      pl.subplot(0, 0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
-      coil.plot_pv(pl)
-      pl.show_grid()
-      pl.add_axes()
-
-      light_1 = pv.Light((1.5, 0.0, -1.2), (0, 0, 0), 'white')
-      light_2 = pv.Light((-0.15, 0.2, 0.1), (0, 0, 0), 'white')
-
-
-      pl.add_light(light_1)
-      pl.add_light(light_2)
-
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.show()
+    # ====================================================
+    # Solve the problem
+    solver = snoopy.RedMVPSolver(gmsh.model, [coil], 
+                                 [dom_core, dom_yoke], [dom_air],
+                                 [reluctance_iron, reluctance_iron],
+                                 quad_order=quad_order, max_newton_iterations=25)
    
-   # ====================================================
-   # Solve the problem
-   solver = snoopy.RedMVPSolver(gmsh.model, [coil], 
-                                [dom_core, dom_yoke], [dom_air],
-                                [reluctance_iron, reluctance_iron],
-                                quad_order=quad_order, max_newton_iterations=25)
-   
-   x = solver.solve()
+    if current == 0.0:
+        x = np.zeros((solver.num_dofs_mvp, ))
+    else:
+        x = solver.solve()
 
-   # ====================================================
-   # Get the point cloud
-   points, B_i = solver.curl_curl_factory.compute_B(x, quad_order=field_density)
+    # ====================================================
+    # Get the point cloud
+    points, B_i = solver.curl_curl_factory.compute_B(x, quad_order=field_density)
 
-   B_coil = coil.compute_B(points)
+    B_coil = coil.compute_B(points)
 
-   # stop time measurement
-   t_e = time.time()
+    # stop time measurement
+    t_e = time.time()
 
-   print('elapsed time = {:.2f} sec'.format(t_e - t_s))
+    print('elapsed time = {:.2f} sec'.format(t_e - t_s))
 
-   if plot_result:
-      # ====================================================
-      # Plot the solution in 3D
-      pl = pv.Plotter(shape=(1, 2))
+    if plot_result:
+        # ====================================================
+        # Plot the solution in 3D
+        pl = pv.Plotter(shape=(1, 2))
 
-      pl.subplot(0, 0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
-      snoopy.plot_vector_field(pl, points, B_i, title='B iron in T', mag=0.05, sym_yz=1, sym_xz=2, opacity='linear')
-      pl.show_grid()
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.add_axes()
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_i, title='B iron in T', mag=0.05, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
 
-      pl.subplot(0, 1)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
-      snoopy.plot_vector_field(pl, points, B_coil, title='B coil in T', mag=0.05, sym_yz=1, sym_xz=2, opacity='linear')
-      pl.show_grid()
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.add_axes()
-      pl.show()
+        pl.subplot(0, 1)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_core, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_yoke, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_coil, title='B coil in T', mag=0.05, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
+        pl.show()
 
-   # ====================================================
-   # Store the solution
-   if not result_directory == 'none':
-      np.save(os.path.join(result_directory, 'x' + result_spec + '.npy'), x)
+    # ====================================================
+    # Store the solution
+    if not result_directory == 'none':
+        np.save(os.path.join(result_directory, 'x' + result_spec + '.npy'), x)
       
-      out_params = parameters.iloc[df_index]
-      out_params_df = out_params.to_frame().T
-      out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
+        out_params = parameters.iloc[df_index]
+        out_params_df = out_params.to_frame().T
+        out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
 
 
-   ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, current_density]
+    ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, current_density]
 
-   if eval_pos.shape[0] > 0:
+    if eval_pos.shape[0] > 0:
       
-      # ====================================================
-      # Evaluate at the given positions
+        # ====================================================
+        # Evaluate at the given positions
 
-      B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_core, dom_yoke, dom_air], x, solver.get_global_ids())
-      B_coil = coil.compute_B(eval_pos)
+        B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_core, dom_yoke, dom_air], x, solver.get_global_ids())
+        B_coil = coil.compute_B(eval_pos)
       
-      B_tot = B_coil + B_iron 
+        B_tot = B_coil + B_iron 
 
-      if not result_directory == 'none':
-         output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
+        if not result_directory == 'none':
+            output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
 
-      else:
-         print('Warning, no result directory specified. I store the evaluations in snoopy directory.')
-         output_filename = 'B' + result_spec + '.csv'
+        else:
+            print('Warning, no result directory specified. I store the evaluations in snoopy directory.')
+            output_filename = 'B' + result_spec + '.csv'
 
-      out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
+        out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
                               columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
 
-   return ret_vals
+    return ret_vals
 
 
 def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
@@ -1127,385 +1143,861 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
                   eval_pos=np.zeros((0, 3)),
                   materials_directory='files/materials',
                   quad_order=8,
-                  max_coil_size=0.05):
-   '''Get the vector point cloud for the magnet 3 template.
+                  max_coil_size=0.05,
+                  use_diluted_steel=False):
+    '''Get the vector point cloud for the magnet 3 template.
     
-   :params parameters:
-      The magnet parameters as pandas dataframe. See the
-      SHiP documentation for details.
+    :params parameters:
+        The magnet parameters as pandas dataframe. See the
+        SHiP documentation for details.
 
-   :param df_index:
-      The row in the pandas parameter dataframe.
+    :param df_index:
+        The row in the pandas parameter dataframe.
    
-   :param lc:
-      The mesh size parameter. Default = 0.5.
+    :param lc:
+        The mesh size parameter. Default = 0.5.
 
-   :param geo_th:
-      A threshold for the identification of boundary surfaces.
-      Adjust it if You generate very small features.
+    :param geo_th:
+        A threshold for the identification of boundary surfaces.
+        Adjust it if You generate very small features.
 
-   :param run_gmsh:
-      Set this flag to true if You like to run the gmsh gui after the mesh
-      was generated.
+    :param run_gmsh:
+        Set this flag to true if You like to run the gmsh gui after the mesh
+        was generated.
 
-   :param plot_geo:
-      Set this flag to true if You like to generate a 3D plot of the geometry.
+    :param plot_geo:
+        Set this flag to true if You like to generate a 3D plot of the geometry.
 
-   :param plot_result:
-      Set this flag to true if You like to generate a 3D plot of the result.
+    :param plot_result:
+        Set this flag to true if You like to generate a 3D plot of the result.
 
-   :param result_directory:
-      The result directory in case You like to store the solution somewhere.
+    :param result_directory:
+        The result directory in case You like to store the solution somewhere.
 
-   :param result_spec:
-      A specifyer for the result files.
+    :param result_spec:
+        A specifyer for the result files.
 
-   :param eval_pos:
-      Additional positions to be evaluated. Default empty.
+    :param eval_pos:
+        Additional positions to be evaluated. Default empty.
 
-   :params materials_directory:
-      The directory where the material files are stored. Default files/materials.
+    :params materials_directory:
+        The directory where the material files are stored. Default files/materials.
 
-   :param quad_order:
-      The quadrature order. Default 8.
+    :param quad_order:
+        The quadrature order. Default 8.
    
-   :param max_coil_size:
-      The maximum coil size in m2.
+    :param max_coil_size:
+        The maximum coil size in m2.
 
-   :return:
-      The positions and field components in a 3D numpy grid.
-   '''
+    :param use_diluted_steel:
+        Set this flag if You like to use diluted steel in the core.
+
+    :return:
+        The positions and field components in a 3D numpy grid.
+    '''
 
 
-   # ====================================================
-   # read the material data
-   reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
-                                                    parameters["material"][df_index]))
+    # ====================================================
+    # read the material data
+    reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
+                                                     parameters["material"][df_index]))
    
-   with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
-      iron_material_data = json.load(f)
+    with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
+        iron_material_data = json.load(f)
 
-   reluctance_air = snoopy.ConstantReluctance(1e7/4/np.pi)
 
-   with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
-      conductor_material_data = json.load(f)
+    with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
+        conductor_material_data = json.load(f)
 
-   # get the target current density
-   J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    # get the target current density
+    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
 
-   # ====================================================
-   # mesh generation
-   gmsh.initialize()
-   gmsh.model.add("make mesh mag 3 template")
+    # ====================================================
+    # mesh generation
+    gmsh.initialize()
+    gmsh.model.add("make mesh mag 3 template")
 
-   # we get the geometry parameters as variables for convinience
-   X_mgap_1 = parameters["Xmgap1(m)"][df_index]
-   X_mgap_2 = parameters["Xmgap2(m)"][df_index]
+    # we get the geometry parameters as variables for convinience
+    X_mgap_1 = parameters["Xmgap1(m)"][df_index]
+    X_mgap_2 = parameters["Xmgap2(m)"][df_index]
 
-   X_core_1 = parameters["Xcore1(m)"][df_index]
-   X_core_2 = parameters["Xcore2(m)"][df_index]
+    X_core_1 = parameters["Xcore1(m)"][df_index]
+    X_core_2 = parameters["Xcore2(m)"][df_index]
 
-   X_void_1 = parameters["Xvoid1(m)"][df_index]
-   X_void_2 = parameters["Xvoid2(m)"][df_index]
+    X_void_1 = parameters["Xvoid1(m)"][df_index]
+    X_void_2 = parameters["Xvoid2(m)"][df_index]
 
-   X_yoke_1 = parameters["Xyoke1(m)"][df_index]
-   X_yoke_2 = parameters["Xyoke2(m)"][df_index]
+    X_yoke_1 = parameters["Xyoke1(m)"][df_index]
+    X_yoke_2 = parameters["Xyoke2(m)"][df_index]
 
-   Y_core_1 = parameters["Ycore1(m)"][df_index]
-   Y_core_2 = parameters["Ycore2(m)"][df_index]
+    Y_core_1 = parameters["Ycore1(m)"][df_index]
+    Y_core_2 = parameters["Ycore2(m)"][df_index]
 
-   Y_void_1 = parameters["Yvoid1(m)"][df_index]
-   Y_void_2 = parameters["Yvoid2(m)"][df_index]
+    Y_void_1 = parameters["Yvoid1(m)"][df_index]
+    Y_void_2 = parameters["Yvoid2(m)"][df_index]
 
-   Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
-   Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
+    Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
+    Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
 
-   Z_len = parameters["Z_len(m)"][df_index]
-   Z_pos = parameters["Z_pos(m)"][df_index]
+    Z_len = parameters["Z_len(m)"][df_index]
+    Z_pos = parameters["Z_pos(m)"][df_index]
 
-   delta_x = parameters["delta_x(m)"][df_index]
-   delta_y = parameters["delta_y(m)"][df_index]
-   delta_z = parameters["delta_z(m)"][df_index]
+    delta_x = parameters["delta_x(m)"][df_index]
+    delta_y = parameters["delta_y(m)"][df_index]
+    delta_z = parameters["delta_z(m)"][df_index]
    
-   yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
+    yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
 
-   ins = parameters["insulation(mm)"][df_index]*1e-3
+    ins = parameters["insulation(mm)"][df_index]*1e-3
 
-   current = parameters["NI(A)"][df_index]
+    current = parameters["NI(A)"][df_index]
 
-   coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
+    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
 
-   field_density = 0.5*parameters["field_density"][df_index]
+    field_density = 0.5*parameters["field_density"][df_index]
 
-   # the maximum number of turns
-   max_turns = np.int64(parameters["max_turns"][df_index])
+    # the maximum number of turns
+    max_turns = np.int64(parameters["max_turns"][df_index])
 
-   # the limits in x, y, and z
-   lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
-   lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
-   z_min = Z_pos - delta_z
-   z_max = Z_pos + Z_len + delta_z
+    # the following is used in case of diluted iron core
+    if use_diluted_steel:
+        # setup the dilution
+        dilution_wing = snoopy.Dilution(X_mgap_1, X_core_1, X_void_1, X_yoke_1,
+                                        X_mgap_2, X_core_2, X_void_2, X_yoke_2,
+                                        Z_pos, Z_len, mag_type=3)
+       
+
+    # the limits in x, y, and z
+    lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
+    lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
+    z_min = Z_pos - delta_z
+    z_max = Z_pos + Z_len + delta_z
    
-   # the iron domain
-   vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
-                                                    X_core_1,
-                                                    X_void_1,
-                                                    X_yoke_1,
-                                                    X_mgap_2, 
-                                                    X_core_2,
-                                                    X_void_2,
-                                                    X_yoke_2,
-                                                    Y_core_1,
-                                                    Y_void_1,
-                                                    Y_yoke_1,
-                                                    Y_core_2,
-                                                    Y_void_2,
-                                                    Y_yoke_2,
-                                                    Z_len, 
-                                                    Z_pos=Z_pos,
-                                                    lc=lc,
-                                                    lc_inner=0.3*lc,
-                                                    yoke_type=3)
+    if use_diluted_steel:
+        # the iron domain
+        vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_diluted_core(gmsh.model, X_mgap_1,
+                                                        X_core_1,
+                                                        X_void_1,
+                                                        X_yoke_1,
+                                                        X_mgap_2, 
+                                                        X_core_2,
+                                                        X_void_2,
+                                                        X_yoke_2,
+                                                        Y_core_1,
+                                                        Y_void_1,
+                                                        Y_yoke_1,
+                                                        Y_core_2,
+                                                        Y_void_2,
+                                                        Y_yoke_2,
+                                                        Z_len, 
+                                                        Z_pos=Z_pos,
+                                                        lc=lc,
+                                                        lc_inner=0.3*lc)
+        # the iron domain
+        vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+        gmsh.model.occ.synchronize()
 
-   # the iron domain
-   vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
-   gmsh.model.occ.synchronize()
+        # fragment perfoms something like a union
+        fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_core),(3, vol_yoke)])
+        gmsh.model.occ.synchronize()
 
-   # fragment perfoms something like a union
-   fragments, _ = gmsh.model.occ.fragment([(3, vol_iron)], [(3, vol_air)])
-   gmsh.model.occ.synchronize()
+        # we get the domains of the fragmentation
+        dom_iron = fragments[0][1]
+        dom_wing = fragments[1][1]
+        dom_air = fragments[2][1]
 
-   # we get the domains of the fragmentation
-   dom_iron = fragments[0][1]
-   dom_air = fragments[1][1]
+        # and we define physical domains
+        gmsh.model.addPhysicalGroup(3, [dom_iron, dom_wing], 1, name = "Iron")
+        gmsh.model.occ.synchronize()
+        gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+        gmsh.model.occ.synchronize()
 
-   # and we define physical domains
-   gmsh.model.addPhysicalGroup(3, [dom_iron], 1, name = "Iron")
-   gmsh.model.occ.synchronize()
-   gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
-   gmsh.model.occ.synchronize()
+        # get the volume of the iron domain
+        M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
+        M_iron += 4*gmsh.model.occ.getMass(3, dom_wing)*iron_material_data["density(g/m3)"]
+    
+    else:
+        # the iron domain
+        vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
+                                                        X_core_1,
+                                                        X_void_1,
+                                                        X_yoke_1,
+                                                        X_mgap_2, 
+                                                        X_core_2,
+                                                        X_void_2,
+                                                        X_yoke_2,
+                                                        Y_core_1,
+                                                        Y_void_1,
+                                                        Y_yoke_1,
+                                                        Y_core_2,
+                                                        Y_void_2,
+                                                        Y_yoke_2,
+                                                        Z_len, 
+                                                        Z_pos=Z_pos,
+                                                        lc=lc,
+                                                        lc_inner=0.3*lc,
+                                                        yoke_type=3)
 
-   # we then generate the mesh
-   gmsh.model.mesh.generate(3)
-   gmsh.model.occ.synchronize()
+        # the iron domain
+        vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+        gmsh.model.occ.synchronize()
 
-   # we now need to collect all Dirichlet boundaries
-   boundary_entities = gmsh.model.getEntities(2)
+        # fragment perfoms something like a union
+        fragments, _ = gmsh.model.occ.fragment([(3, vol_iron)], [(3, vol_air)])
+        gmsh.model.occ.synchronize()
 
-   # this list will store the boundary tags
-   dirichlet_boundaries = []
+        # we get the domains of the fragmentation
+        dom_iron = fragments[0][1]
+        dom_air = fragments[1][1]
 
-   for i, be in boundary_entities:
+        # and we define physical domains
+        gmsh.model.addPhysicalGroup(3, [dom_iron], 1, name = "Iron")
+        gmsh.model.occ.synchronize()
+        gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+        gmsh.model.occ.synchronize()
 
-      min_uv, max_uv = gmsh.model.getParametrizationBounds(2, be)
-      u = 0.5*(max_uv[0] + min_uv[0])
-      v = 0.5*(max_uv[1] + min_uv[1])
+        # get the volume of the iron domain
+        M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
 
-      coord = gmsh.model.getValue(2, be, [u, v])
-      normal = gmsh.model.getNormal(be, [u, v])
+    # we then generate the mesh
+    gmsh.model.mesh.generate(3)
+    gmsh.model.occ.synchronize()
 
-      if (abs(coord[0] - 0.0) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+    # we now need to collect all Dirichlet boundaries
+    boundary_entities = gmsh.model.getEntities(2)
 
-      elif (abs(coord[0] - lim_x) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+    # this list will store the boundary tags
+    dirichlet_boundaries = []
 
-      elif (abs(coord[1] - lim_y) < geo_th and abs(abs(normal[1]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+    for i, be in boundary_entities:
 
-      elif (abs(coord[2] - z_min) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        min_uv, max_uv = gmsh.model.getParametrizationBounds(2, be)
+        u = 0.5*(max_uv[0] + min_uv[0])
+        v = 0.5*(max_uv[1] + min_uv[1])
 
-      elif (abs(coord[2] - z_max) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
-         dirichlet_boundaries.append(be)
+        coord = gmsh.model.getValue(2, be, [u, v])
+        normal = gmsh.model.getNormal(be, [u, v])
 
-   # add a physical group for this boundary condition
-   gmsh.model.addPhysicalGroup(2, dirichlet_boundaries, 1, name = "Dirichlet Boundary")
+        if (abs(coord[0] - 0.0) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-   gmsh.model.occ.synchronize()
+        elif (abs(coord[0] - lim_x) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-   # get the volume of the iron domain
-   M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
-   print('The iron mass is = {:.2f} t'.format(M_iron*1e-6))
+        elif (abs(coord[1] - lim_y) < geo_th and abs(abs(normal[1]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-   if run_gmsh:
-      gmsh.fltk.run()
+        elif (abs(coord[2] - z_min) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
+        elif (abs(coord[2] - z_max) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
 
-   # ====================================================
-   # Make the coil objects
+    # add a physical group for this boundary condition
+    gmsh.model.addPhysicalGroup(2, dirichlet_boundaries, 1, name = "Dirichlet Boundary")
 
-   # this list stores the coil objects
-   coil_list = []
+    gmsh.model.occ.synchronize()
 
-   # determine the slot size
-   slot_size = 2*min(Y_core_1, Y_core_2)
+    if run_gmsh:
+        gmsh.fltk.run()
 
-   # determine the number of conductors
-   num_cond = np.int32(slot_size/2/(coil_radius+ins))
+    # ====================================================
+    # Make the coil objects
 
-   # do not allow more conductors than a certain amount
-   if num_cond > max_turns:
-      num_cond = max_turns
+    # this list stores the coil objects
+    coil_list = []
 
-   # these are the vertical positions
-   y = np.linspace(-0.5*slot_size + coil_radius + ins,
-                    0.5*slot_size - coil_radius - ins, num_cond)
+    # determine the slot size
+    slot_size = 2*min(Y_core_1, Y_core_2)
 
-   # make two coils
-   kp_1 = np.array([[ X_void_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
-                  [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
-                  [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
-                  [ X_yoke_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
-                  [ X_yoke_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
-                  [ X_yoke_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
-                  [ X_void_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
-                  [ X_void_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+    # determine the number of conductors
+    num_cond = np.int32(slot_size/2/(coil_radius+ins))
 
-   kp_2 = kp_1.copy()
-   kp_2[:, 0] *= -1.0
+    # do not allow more conductors than a certain amount
+    if num_cond > max_turns:
+        num_cond = max_turns
+
+    # these are the vertical positions
+    y = np.linspace(-0.5*slot_size + coil_radius + ins,
+                     0.5*slot_size - coil_radius - ins, num_cond)
+
+    # make two coils
+    kp_1 = np.array([[ X_void_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
+                   [ X_void_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_yoke_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_yoke_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                   [ X_yoke_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                   [ X_yoke_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_void_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_void_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+
+    kp_2 = kp_1.copy()
+    kp_2[:, 0] *= -1.0
       
-   coil_list.append(snoopy.RacetrackCoil(kp_1, y, coil_radius, current/num_cond))
-   coil_list.append(snoopy.RacetrackCoil(kp_2, y, coil_radius, current/num_cond))
+    coil_list.append(snoopy.RacetrackCoil(kp_1, y, coil_radius, current/num_cond))
+    coil_list.append(snoopy.RacetrackCoil(kp_2, y, coil_radius, current/num_cond))
 
-   # the horizontal slot size
-   slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)   
+    # the horizontal slot size
+    slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)   
 
-   # this is the space we have available for the coils
-   A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    # this is the space we have available for the coils
+    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
 
-   # this is the coil size using the target current density
-   A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
+    # this is the coil size using the target current density
+    A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
-   # we compute the current density (for monitoring reasons)
-   current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
-
-
-   # the turn perimeter
-   turn_perimeter = coil_list[0].get_length() + coil_list[1].get_length()
-
-   # this is the available coil volume
-   M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
-
-   print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
-
-   # ====================================================
-   # The power consumption
-   print('The current density is = {} A/mm2'.format(current_density*1e-6))
-
-   Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
-
-   print('The power consumption = {:.2f} W'.format(Q))
-
-   if plot_geo:
-
-      # ====================================================
-      # Plot the magnet
-      pl = pv.Plotter(shape=(1, 1), off_screen=False)
-
-      pl.subplot(0, 0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
-      for coil in coil_list:
-         coil.plot_pv(pl)
-      pl.show_grid()
-      pl.add_axes()
-
-      light_1 = pv.Light((1.5, 0.0, -1.2), (0, 0, 0), 'white')
-      light_2 = pv.Light((-0.15, 0.2, 0.1), (0, 0, 0), 'white')
+    # we compute the current density (for monitoring reasons)
+    if current == 0.0:
+        current_density = 0.0
+    else:
+        current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
 
 
-      pl.add_light(light_1)
-      pl.add_light(light_2)
+    # the turn perimeter
+    turn_perimeter = coil_list[0].get_length() + coil_list[1].get_length()
 
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.show()
+    # this is the available coil volume
+    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+
+    # ====================================================
+    # The power consumption
+
+    if current == 0.0:
+        Q = 0.0
+    else:
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+
+
+    if plot_geo:
+
+        # ====================================================
+        # Plot the magnet
+        pl = pv.Plotter(shape=(1, 1), off_screen=False)
+
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
+        for coil in coil_list:
+            coil.plot_pv(pl)
+        pl.show_grid()
+        pl.add_axes()
+
+        light_1 = pv.Light((1.5, 0.0, -1.2), (0, 0, 0), 'white')
+        light_2 = pv.Light((-0.15, 0.2, 0.1), (0, 0, 0), 'white')
+
+
+        pl.add_light(light_1)
+        pl.add_light(light_2)
+
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.show()
    
-
-   # ====================================================
-   # Solve the problem
-   solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
-                                [dom_iron], [dom_air],
-                                [reluctance_iron],
-                                quad_order=quad_order, max_newton_iterations=50)
+    # ====================================================
+    # Solve the problem
+    if use_diluted_steel:
+      solver = snoopy.RedMVPSolverDiluted(gmsh.model, coil_list, 
+                                    [dom_iron, dom_wing], [dom_air],
+                                    [reluctance_iron, reluctance_iron],
+                                    [None, dilution_wing],
+                                    quad_order=quad_order, max_newton_iterations=25)
+      
+    else:
+      solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
+                                    [dom_iron], [dom_air],
+                                    [reluctance_iron],
+                                    quad_order=quad_order, max_newton_iterations=25)
    
-   x = solver.solve()
+    if current == 0.0:
+        x = np.zeros((solver.num_dofs_mvp, ))
+    else:
+        x = solver.solve()
+
+    # ====================================================
+    # Get the point cloud
+    points, B_i = solver.curl_curl_factory.compute_B(x, quad_order=field_density)
+
+    B_coil = 0.0*B_i
+    for coil in coil_list:
+        B_coil += coil.compute_B(points)
 
 
-   # ====================================================
-   # Get the point cloud
-   points, B_i = solver.curl_curl_factory.compute_B(x, quad_order=field_density)
+    if plot_result:
+        # ====================================================
+        # Plot the solution in 3D
+        pl = pv.Plotter(shape=(1, 2))
 
-   B_coil = 0.0*B_i
-   for coil in coil_list:
-      B_coil += coil.compute_B(points)
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
+        if use_diluted_steel:
+            snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_i, title='B iron in T', mag=0.1, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
 
+        pl.subplot(0, 1)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
+        if use_diluted_steel:
+            snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_coil, title='B coil in T', mag=30.0, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
+        pl.show()
 
-   if plot_result:
-      # ====================================================
-      # Plot the solution in 3D
-      pl = pv.Plotter(shape=(1, 2))
-
-      pl.subplot(0, 0)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
-      snoopy.plot_vector_field(pl, points, B_i, title='B iron in T', mag=0.1, sym_yz=1, sym_xz=2, opacity='linear')
-      pl.show_grid()
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.add_axes()
-
-      pl.subplot(0, 1)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
-      snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
-      snoopy.plot_vector_field(pl, points, B_coil, title='B coil in T', mag=30.0, sym_yz=1, sym_xz=2, opacity='linear')
-      pl.show_grid()
-      pl.camera_position = 'zy'
-      pl.camera.elevation = 35
-      pl.camera.azimuth = 45
-      pl.add_axes()
-      pl.show()
-
-   # ====================================================
-   # Store the solution
-   if not result_directory == 'none':
-      np.save(os.path.join(result_directory, 'x' + result_spec + '.npy'), x)
+    # ====================================================
+    # Store the solution
+    if not result_directory == 'none':
+        np.save(os.path.join(result_directory, 'x' + result_spec + '.npy'), x)
       
-      out_params = parameters.iloc[df_index]
-      out_params_df = out_params.to_frame().T
-      out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
+        out_params = parameters.iloc[df_index]
+        out_params_df = out_params.to_frame().T
+        out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
 
 
-   ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, current_density]
+    ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, current_density]
 
-   if eval_pos.shape[0] > 0:
+    if eval_pos.shape[0] > 0:
       
-      # ====================================================
-      # Evaluate at the given positions
+        # ====================================================
+        # Evaluate at the given positions
 
-      B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
+        if use_diluted_steel:
+            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
+        else:
+            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
 
-      B_coil = 0.0*B_iron
-      for coil in coil_list:
-         B_coil += coil.compute_B(eval_pos)
+        B_coil = 0.0*B_iron
+        for coil in coil_list:
+            B_coil += coil.compute_B(eval_pos)
       
-      B_tot = B_coil + B_iron 
+        B_tot = B_coil + B_iron 
 
-      if not result_directory == 'none':
-         output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
+        if not result_directory == 'none':
+            output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
 
-      else:
-         print('Warning, no result directory specified. I store the evaluations in snoopy directory.')
-         output_filename = 'B' + result_spec + '.csv'
+        else:
+            print('Warning, no result directory specified. I store the evaluations in snoopy directory.')
+            output_filename = 'B' + result_spec + '.csv'
 
-      out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
+        out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
                               columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
 
-   return ret_vals
+    return ret_vals
 
+
+def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
+                  geo_th=1e-5, run_gmsh=False, plot_geo=False,
+                  plot_result=False, result_directory='none', result_spec='',
+                  eval_pos=np.zeros((0, 3)),
+                  materials_directory='files/materials',
+                  quad_order=8,
+                  max_coil_size=0.05,
+                  use_diluted_steel=False):
+    '''Get the vector point cloud for the magnet 4 template.
+    
+    :params parameters:
+        The magnet parameters as pandas dataframe. See the
+        SHiP documentation for details.
+
+    :param df_index:
+        The row in the pandas parameter dataframe.
+   
+    :param lc:
+        The mesh size parameter. Default = 0.5.
+
+    :param geo_th:
+        A threshold for the identification of boundary surfaces.
+        Adjust it if You generate very small features.
+
+    :param run_gmsh:
+        Set this flag to true if You like to run the gmsh gui after the mesh
+        was generated.
+
+    :param plot_geo:
+        Set this flag to true if You like to generate a 3D plot of the geometry.
+
+    :param plot_result:
+        Set this flag to true if You like to generate a 3D plot of the result.
+
+    :param result_directory:
+        The result directory in case You like to store the solution somewhere.
+
+    :param result_spec:
+        A specifyer for the result files.
+
+    :param eval_pos:
+        Additional positions to be evaluated. Default empty.
+
+    :params materials_directory:
+        The directory where the material files are stored. Default files/materials.
+
+    :param quad_order:
+        The quadrature order. Default 8.
+   
+    :param max_coil_size:
+        The maximum coil size in m2.
+
+    :param use_diluted_steel:
+        Set this flag if You like to use diluted steel in the core.
+
+    :return:
+        The positions and field components in a 3D numpy grid.
+    '''
+
+
+    # ====================================================
+    # read the material data
+    reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
+                                                     parameters["material"][df_index]))
+   
+    with open(os.path.join(materials_directory, parameters["material"][df_index])) as f:
+        iron_material_data = json.load(f)
+
+
+    with open(os.path.join(materials_directory, parameters["coil_material"][df_index])) as f:
+        conductor_material_data = json.load(f)
+
+    # get the target current density
+    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+
+    # ====================================================
+    # mesh generation
+    gmsh.initialize()
+    gmsh.model.add("make mesh mag 4 template")
+
+    # we get the geometry parameters as variables for convinience
+    X_A_1 = parameters["Xmgap1(m)"][df_index]
+    X_A_2 = parameters["Xmgap2(m)"][df_index]
+
+    X_B_1 = parameters["Xcore1(m)"][df_index]
+    X_B_2 = parameters["Xcore2(m)"][df_index]
+
+    X_C_1 = parameters["Xvoid1(m)"][df_index]
+    X_C_2 = parameters["Xvoid2(m)"][df_index]
+
+    X_D_1 = parameters["Xcore1(m)"][df_index+1]
+    X_D_2 = parameters["Xcore2(m)"][df_index+1]
+
+    X_E_1 = parameters["Xvoid1(m)"][df_index+1]
+    X_E_2 = parameters["Xvoid2(m)"][df_index+1]
+
+    X_F_1 = parameters["Xyoke1(m)"][df_index+1]
+    X_F_2 = parameters["Xyoke2(m)"][df_index+1]
+
+    Y_core_1 = parameters["Ycore1(m)"][df_index]
+    Y_core_2 = parameters["Ycore2(m)"][df_index]
+
+    Y_void_1 = parameters["Yvoid1(m)"][df_index]
+    Y_void_2 = parameters["Yvoid2(m)"][df_index]
+
+    Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
+    Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
+
+    Z_len = parameters["Z_len(m)"][df_index]
+    Z_pos = parameters["Z_pos(m)"][df_index]
+
+    delta_x = parameters["delta_x(m)"][df_index]
+    delta_y = parameters["delta_y(m)"][df_index]
+    delta_z = parameters["delta_z(m)"][df_index]
+   
+    yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
+
+    ins = parameters["insulation(mm)"][df_index]*1e-3
+
+    current = parameters["NI(A)"][df_index]
+
+    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
+
+    field_density = 0.5*parameters["field_density"][df_index]
+
+    # the maximum number of turns
+    max_turns = np.int64(parameters["max_turns"][df_index])
+
+    # the following is used in case of diluted iron core
+    if use_diluted_steel:
+        # setup the dilution
+        dilution_iron = snoopy.Dilution(X_A_1 + X_E_1, X_B_1 + X_F_1, X_C_1, X_D_1,
+                                       X_A_2 + X_E_2, X_B_2 + X_F_2, X_C_2, X_D_2,
+                                       Z_pos, Z_len)
+       
+    # the limits in x, y, and z
+    lim_x = max([X_F_1, X_F_2]) + delta_x
+    lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
+    z_min = Z_pos - delta_z
+    z_max = Z_pos + Z_len + delta_z
+
+    # the iron domain
+    vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_mag_4(gmsh.model, 
+                                                         X_A_1, X_B_1, X_C_1, X_D_1, X_E_1, X_F_1,
+                                                         X_A_2, X_B_2, X_C_2, X_D_2, X_E_2, X_F_2,
+                                                         Y_core_1, Y_yoke_1,
+                                                         Y_core_2, Y_yoke_2,
+                                                         Z_len, 
+                                                         Z_pos=Z_pos,
+                                                         lc=lc,
+                                                         lc_inner=0.3*lc)
+    # the iron domain
+    vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+    gmsh.model.occ.synchronize()
+
+
+    # fragment perfoms something like a union
+    fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_core),(3, vol_yoke)])
+    gmsh.model.occ.synchronize()
+
+    # we get the domains of the fragmentation
+    dom_iron = fragments[0][1]
+    dom_wing = fragments[1][1]
+    dom_air = fragments[2][1]
+
+    # and we define physical domains
+    gmsh.model.addPhysicalGroup(3, [dom_iron, dom_wing], 1, name = "Iron")
+    gmsh.model.occ.synchronize()
+    gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+    gmsh.model.occ.synchronize()
+
+    # get the volume of the iron domain
+    M_iron = 4*gmsh.model.occ.getMass(3, dom_iron)*iron_material_data["density(g/m3)"]
+    M_iron += 4*gmsh.model.occ.getMass(3, dom_wing)*iron_material_data["density(g/m3)"]
+    
+    # we then generate the mesh
+    gmsh.model.mesh.generate(3)
+    gmsh.model.occ.synchronize()
+
+    # we now need to collect all Dirichlet boundaries
+    boundary_entities = gmsh.model.getEntities(2)
+
+    # this list will store the boundary tags
+    dirichlet_boundaries = []
+
+    for i, be in boundary_entities:
+
+        min_uv, max_uv = gmsh.model.getParametrizationBounds(2, be)
+        u = 0.5*(max_uv[0] + min_uv[0])
+        v = 0.5*(max_uv[1] + min_uv[1])
+
+        coord = gmsh.model.getValue(2, be, [u, v])
+        normal = gmsh.model.getNormal(be, [u, v])
+
+        if (abs(coord[0] - 0.0) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
+
+        elif (abs(coord[0] - lim_x) < geo_th and abs(abs(normal[0]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
+
+        elif (abs(coord[1] - lim_y) < geo_th and abs(abs(normal[1]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
+
+        elif (abs(coord[2] - z_min) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
+
+        elif (abs(coord[2] - z_max) < geo_th and abs(abs(normal[2]) - 1.0) < geo_th):
+            dirichlet_boundaries.append(be)
+
+    # add a physical group for this boundary condition
+    gmsh.model.addPhysicalGroup(2, dirichlet_boundaries, 1, name = "Dirichlet Boundary")
+
+    gmsh.model.occ.synchronize()
+
+    if run_gmsh:
+        gmsh.fltk.run()
+
+    # ====================================================
+    # Make the coil objects
+
+    # this list stores the coil objects
+    coil_list = []
+
+    # determine the slot size
+    slot_size = 2*min(Y_core_1, Y_core_2)
+
+    # determine the number of conductors
+    num_cond = np.int32(slot_size/2/(coil_radius+ins))
+
+    # do not allow more conductors than a certain amount
+    if num_cond > max_turns:
+        num_cond = max_turns
+
+    # these are the vertical positions
+    y = np.linspace(-0.5*slot_size + coil_radius + ins,
+                     0.5*slot_size - coil_radius - ins, num_cond)
+
+    # make two coils
+    kp_1 = np.array([[ X_C_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
+                   [ X_C_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_D_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_D_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                   [ X_D_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                   [ X_D_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_C_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_C_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+
+    kp_2 = kp_1.copy()
+    kp_2[:, 0] *= -1.0
+      
+    coil_list.append(snoopy.RacetrackCoil(kp_1, y, coil_radius, current/num_cond))
+    coil_list.append(snoopy.RacetrackCoil(kp_2, y, coil_radius, current/num_cond))
+
+    # the horizontal slot size
+    slot_size_horz = min([X_C_1 - X_B_1, X_C_2 - X_B_2,
+                          X_E_1 - X_D_1, X_E_2 - X_D_2,])   
+
+    # this is the space we have available for the coils
+    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+
+    # this is the coil size using the target current density
+    A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
+
+    # we compute the current density (for monitoring reasons)
+    current_density = abs(current)/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
+
+
+    # the turn perimeter
+    turn_perimeter = coil_list[0].get_length() + coil_list[1].get_length()
+
+    # this is the available coil volume
+    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+
+    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
+
+    # ====================================================
+    # The power consumption
+    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+
+    Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+
+    print('The power consumption = {:.2f} W'.format(Q))
+
+    if plot_geo:
+
+        # ====================================================
+        # Plot the magnet
+        pl = pv.Plotter(shape=(1, 1), off_screen=False)
+
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
+        for coil in coil_list:
+            coil.plot_pv(pl)
+        pl.show_grid()
+        pl.add_axes()
+
+        light_1 = pv.Light((1.5, 0.0, -1.2), (0, 0, 0), 'white')
+        light_2 = pv.Light((-0.15, 0.2, 0.1), (0, 0, 0), 'white')
+
+
+        pl.add_light(light_1)
+        pl.add_light(light_2)
+
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.show()
+   
+    # ====================================================
+    # Solve the problem
+    if use_diluted_steel:
+      solver = snoopy.RedMVPSolverDiluted(gmsh.model, coil_list, 
+                                    [dom_iron, dom_wing], [dom_air],
+                                    [reluctance_iron, reluctance_iron],
+                                    [dilution_iron, None],
+                                    quad_order=quad_order, max_newton_iterations=150)
+      # solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
+      #                               [dom_iron, dom_wing], [dom_air],
+      #                               [reluctance_iron, reluctance_wing],
+      #                               quad_order=quad_order, max_newton_iterations=150)
+      
+    else:
+      solver = snoopy.RedMVPSolver(gmsh.model, coil_list, 
+                                    [dom_iron, dom_wing], [dom_air],
+                                    [reluctance_iron, reluctance_iron],
+                                    quad_order=quad_order, max_newton_iterations=150)
+   
+    x = solver.solve()
+
+
+    # ====================================================
+    # Get the point cloud
+    points, B_i = solver.curl_curl_factory.compute_B(x, quad_order=field_density)
+
+    B_coil = 0.0*B_i
+    for coil in coil_list:
+        B_coil += coil.compute_B(points)
+
+
+    if plot_result:
+        # ====================================================
+        # Plot the solution in 3D
+        pl = pv.Plotter(shape=(1, 2))
+
+        pl.subplot(0, 0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_i, title='B iron in T', mag=0.1, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
+
+        pl.subplot(0, 1)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, plot_volume=False)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, plot_volume=False, opacity=0.0)
+        snoopy.plot_vector_field(pl, points, B_coil, title='B coil in T', mag=30.0, sym_yz=1, sym_xz=2, opacity='linear')
+        pl.show_grid()
+        pl.camera_position = 'zy'
+        pl.camera.elevation = 35
+        pl.camera.azimuth = 45
+        pl.add_axes()
+        pl.show()
+
+    # ====================================================
+    # Store the solution
+    if not result_directory == 'none':
+        np.save(os.path.join(result_directory, 'x' + result_spec + '.npy'), x)
+      
+        out_params = parameters.iloc[df_index]
+        out_params_df = out_params.to_frame().T
+        out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
+
+
+    ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, current_density]
+
+    if eval_pos.shape[0] > 0:
+      
+        # ====================================================
+        # Evaluate at the given positions
+
+        B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
+
+        B_coil = 0.0*B_iron
+        for coil in coil_list:
+            B_coil += coil.compute_B(eval_pos)
+      
+        B_tot = B_coil + B_iron 
+
+        if not result_directory == 'none':
+            output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
+
+        else:
+            print('Warning, no result directory specified. I store the evaluations in snoopy directory.')
+            output_filename = 'B' + result_spec + '.csv'
+
+        out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
+                              columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
+
+    return ret_vals
 
 
 def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
@@ -1947,7 +2439,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
 
    return ret_vals
 
-def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True):
+def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True, step_filename=''):
    '''Plot the geometry for the magnet 1 template.
     
    :params pl:
@@ -2068,7 +2560,8 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    gmsh.model.mesh.generate(3)
    gmsh.model.occ.synchronize()
 
-   gmsh.model.occ.synchronize()
+   if not len(step_filename) == 0:
+      gmsh.write(step_filename)
 
    # ====================================================
    # Make the coil objects
@@ -2132,7 +2625,7 @@ def plot_geometry_mag_1(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
 
    return
 
-def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True):
+def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True, step_filename=''):
    '''Plot the geometry for the magnet 2 template.
     
    :params pl:
@@ -2260,7 +2753,8 @@ def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    gmsh.model.mesh.generate(3)
    gmsh.model.occ.synchronize()
 
-   gmsh.model.occ.synchronize()
+   if not len(step_filename) == 0:
+      gmsh.write(step_filename)
 
 
    # ====================================================
@@ -2296,7 +2790,7 @@ def plot_geometry_mag_2(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
 
    return None
 
-def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True):
+def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True, step_filename=''):
    '''Plot the geometry for the magnet 2 template.
     
    :params pl:
@@ -2416,7 +2910,8 @@ def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    gmsh.model.mesh.generate(3)
    gmsh.model.occ.synchronize()
 
-   gmsh.model.occ.synchronize()
+   if not len(step_filename) == 0:
+      gmsh.write(step_filename)
 
    # ====================================================
    # Make the coil objects
@@ -2459,3 +2954,166 @@ def plot_geometry_mag_3(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
    # snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
    for coil in coil_list:
       coil.plot_pv(pl)
+
+def plot_geometry_mag_4(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True, step_filename=''):
+    '''Plot the geometry for the magnet 4 template.
+     
+    :params pl:
+       The plotter object.
+
+    :params parameters:
+       The magnet parameters as pandas dataframe. See the
+       SHiP documentation for details.
+
+    :param df_index:
+       The row in the pandas parameter dataframe.
+   
+    :param lc:
+       The mesh size parameter. Default = 0.5.
+
+    :param opacity:
+       The opacity of the iron domain. Default=False.
+
+    :param show_edges:
+       Set this flag to enable plotting the edges. Default=True.
+
+    :return:
+       None
+    '''
+    # ====================================================
+    # mesh generation
+    gmsh.initialize()
+    gmsh.model.add("make mesh mag 3 template")
+
+    # we get the geometry parameters as variables for convinience
+    X_A_1 = parameters["Xmgap1(m)"][df_index]
+    X_A_2 = parameters["Xmgap2(m)"][df_index]
+
+    X_B_1 = parameters["Xcore1(m)"][df_index]
+    X_B_2 = parameters["Xcore2(m)"][df_index]
+
+    X_C_1 = parameters["Xvoid1(m)"][df_index]
+    X_C_2 = parameters["Xvoid2(m)"][df_index]
+
+    X_D_1 = parameters["Xcore1(m)"][df_index+1]
+    X_D_2 = parameters["Xcore2(m)"][df_index+1]
+
+    X_E_1 = parameters["Xvoid1(m)"][df_index+1]
+    X_E_2 = parameters["Xvoid2(m)"][df_index+1]
+
+    X_F_1 = parameters["Xyoke1(m)"][df_index+1]
+    X_F_2 = parameters["Xyoke2(m)"][df_index+1]
+
+    Y_core_1 = parameters["Ycore1(m)"][df_index]
+    Y_core_2 = parameters["Ycore2(m)"][df_index]
+
+    Y_void_1 = parameters["Yvoid1(m)"][df_index]
+    Y_void_2 = parameters["Yvoid2(m)"][df_index]
+
+    Y_yoke_1 = parameters["Yyoke1(m)"][df_index]
+    Y_yoke_2 = parameters["Yyoke2(m)"][df_index]
+
+    Z_len = parameters["Z_len(m)"][df_index]
+    Z_pos = parameters["Z_pos(m)"][df_index]
+
+    delta_x = parameters["delta_x(m)"][df_index]
+    delta_y = parameters["delta_y(m)"][df_index]
+    delta_z = parameters["delta_z(m)"][df_index]
+   
+    yoke_spacer = parameters["yoke_spacer(mm)"][df_index]*1e-3
+
+    ins = parameters["insulation(mm)"][df_index]*1e-3
+
+    current = parameters["NI(A)"][df_index]
+
+    coil_radius = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
+
+    field_density = 0.5*parameters["field_density"][df_index]
+
+    max_turns = np.int64(parameters["max_turns"][df_index])
+
+    # the limits in x, y, and z
+    lim_x = max([X_F_1, X_F_2]) + delta_x
+    lim_y = max([Y_yoke_1, Y_yoke_2]) + delta_y
+    z_min = Z_pos - delta_z
+    z_max = Z_pos + Z_len + delta_z
+    
+    # the iron domain
+    vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_mag_4(gmsh.model, 
+                                                         X_A_1, X_B_1, X_C_1, X_D_1, X_E_1, X_F_1,
+                                                         X_A_2, X_B_2, X_C_2, X_D_2, X_E_2, X_F_2,
+                                                         Y_core_1, Y_yoke_1,
+                                                         Y_core_2, Y_yoke_2,
+                                                         Z_len, 
+                                                         Z_pos=Z_pos,
+                                                         lc=lc,
+                                                         lc_inner=0.3*lc)
+    # the iron domain
+    vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+    gmsh.model.occ.synchronize()
+
+
+    # fragment perfoms something like a union
+    fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_core),(3, vol_yoke)])
+    gmsh.model.occ.synchronize()
+
+    # we get the domains of the fragmentation
+    dom_iron = fragments[0][1]
+    dom_wing = fragments[1][1]
+    dom_air = fragments[2][1]
+
+    # and we define physical domains
+    gmsh.model.addPhysicalGroup(3, [dom_iron, dom_wing], 1, name = "Iron")
+    gmsh.model.occ.synchronize()
+    gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+    gmsh.model.occ.synchronize()
+
+    
+    # we then generate the mesh
+    gmsh.model.mesh.generate(3)
+    gmsh.model.occ.synchronize()
+
+    if not len(step_filename) == 0:
+       gmsh.write(step_filename)
+
+    # ====================================================
+    # Make the coil objects
+
+    # this list stores the coil objects
+    coil_list = []
+
+    # determine the slot size
+    slot_size = 2*min(Y_core_1, Y_core_2)
+
+    # determine the number of conductors
+    num_cond = np.int32(slot_size/2/(coil_radius+ins))
+
+    # do not allow more conductors than a certain amount
+    if num_cond > max_turns:
+        num_cond = max_turns
+
+    # these are the vertical positions
+    y = np.linspace(-0.5*slot_size + coil_radius + ins,
+                     0.5*slot_size - coil_radius - ins, num_cond)
+
+    # make two coils
+    kp_1 = np.array([[ X_C_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len           ],
+                   [ X_C_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_D_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                   [ X_D_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                   [ X_D_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                   [ X_D_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_C_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                   [ X_C_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+
+    kp_2 = kp_1.copy()
+    kp_2[:, 0] *= -1.0
+      
+    coil_list.append(snoopy.RacetrackCoil(kp_1, y, coil_radius, current/num_cond))
+    coil_list.append(snoopy.RacetrackCoil(kp_2, y, coil_radius, current/num_cond))
+
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_iron, reflect_xz=True, reflect_yz=True, show_edges=show_edges, opacity=opacity, plot_feature_edges=plot_feature_edges)
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_wing, reflect_xz=True, reflect_yz=True, show_edges=show_edges, opacity=opacity, plot_feature_edges=plot_feature_edges)
+
+    for coil in coil_list:
+       coil.plot_pv(pl)

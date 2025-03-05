@@ -703,6 +703,319 @@ def add_SHIP_iron_yoke_diluted_wing(model, X_mgap_1, X_core_1, X_void_1, X_yoke_
 
     return vol_1, vol_2
 
+def add_SHiP_volume(model, points_1, points_2):
+    '''Add a volume based on points at entrance and exit.
+    The points are connected sequentially by lines. The order of the
+    points in the input lists is followed.
+
+    :param model:
+        The gmsh model.
+    
+    :param points_1:
+        A list of gmsh points at the entrance of the magnet.
+
+    :param points_2:
+        A list of gmsh points at the exit of the magnet.
+
+    :return:
+        The gmsh volume tag.
+    '''
+
+    # the number of points
+    num_points = len(points_1)
+
+    # connect the entrance points by lines
+    l_1 = [model.occ.addLine(points_1[i], points_1[i+1]) for i in range(num_points-1)]
+    l_1.append(model.occ.addLine(points_1[-1], points_1[0]))
+
+    # connect the exit points by lines
+    l_2 = [model.occ.addLine(points_2[i], points_2[i+1]) for i in range(num_points-1)]
+    l_2.append(model.occ.addLine(points_2[-1], points_2[0]))
+
+    # connect entrance and exit by lines
+    l_12 = [model.occ.addLine(points_1[i], points_2[i]) for i in range(num_points)]
+
+    # make curve loops for entrance and exit
+    c_1 = model.occ.addCurveLoop(l_1)
+    c_2 = model.occ.addCurveLoop(l_2)
+
+    # make curve loops connecting entrance and exit
+    c_12 = [model.occ.addCurveLoop([l_1[i], l_12[i+1], l_2[i], l_12[i]])
+                                    for i in range(num_points-1)]
+    c_12.append(model.occ.addCurveLoop([l_1[-1], l_12[0], l_2[-1], l_12[-1]]))
+
+    # add plane surfaces
+    s = [model.occ.addPlaneSurface([c_1]),
+         model.occ.addPlaneSurface([c_2])]
+    for i, cc in enumerate(c_12):
+        s.append(model.occ.addPlaneSurface([cc]))
+
+    # make surface loop
+    sl = model.occ.addSurfaceLoop(s)
+
+    # make the volume
+    vol = model.occ.addVolume([sl])
+
+    return vol
+
+def add_SHIP_iron_yoke_diluted_core(model, X_mgap_1, X_core_1, X_void_1, X_yoke_1,
+                        X_mgap_2, X_core_2, X_void_2, X_yoke_2,
+                        Y_core_1, Y_void_1, Y_yoke_1,
+                        Y_core_2, Y_void_2, Y_yoke_2,
+                        Z_len, 
+                        Z_pos=0.0,
+                        lc=2e-1,
+                        lc_inner=-1,
+                        reflect_xz=False):
+    '''Add an iron yoke for the SHiP project to a gmsh model. This function is used for the case
+    where the core is diluted.
+    
+    :param X_mgap_1:
+        The size of the horizontal gap. (entrance)
+
+    :param X_core_1:
+        The horizontal coordinate of the end of the iron core (entrance).
+
+    :param X_void_1:
+        The horizontal coordinate of the end of the void region (entrance).
+
+    :param X_yoke_1:
+        The horizontal coordinate of the end of the magnet end (entrance).
+
+    :param X_mgap_2:
+        The size of the horizontal gap. (exit)
+
+    :param X_core_2:
+        The horizontal coordinate of the end of the iron core (exit).
+
+    :param X_void_2:
+        The horizontal coordinate of the end of the void region (exit).
+
+    :param X_yoke_2:
+        The horizontal coordinate of the end of the magnet end (exit).
+
+    :param Y_void_1:
+        The vertical coordinate of the end of the void region. (entrance)
+
+    :param Y_yoke_1:
+        The vertical coordinate of the end of the iron yoke (entrance).
+
+    :param Y_void_2:
+        The vertical coordinate of the end of the void region (exit).
+
+    :param Y_yoke_2:
+        The horizontal coordinate of the end of the iron yoke (exit).
+
+    :param Z_len:
+        The length of the magnet in the z direction.
+
+    :param Z_pos:
+        The position of the magnet in the z direction.
+
+    :param show:
+        Set this flag to show the mesh in the gmsh gui.
+
+    :param lc:
+        A length scale parameter to control the mesh size.
+
+    :param lc_inner:
+        The legth scale parameter applied in the inner of the iron domain.
+        If negative it is ignored.
+
+    :param reflect_xz:
+        Reflect the fomain in the xz plane.
+
+    :return:
+        The gmsh model object as well as the labels of the physical groups for the two terminals.
+    '''
+
+    if lc_inner < 0:
+        lc_inner = lc
+
+    # the z position of the entrance
+    Z_1 = Z_pos
+
+    # the z position of the exit
+    Z_2 = Z_1 + Z_len
+
+    # THESE ARE THE KEYPOINTS FOR THE CORE
+    p_core_1 = [model.occ.addPoint(X_mgap_1, 0.0, Z_1, lc_inner),
+              model.occ.addPoint(X_core_1, 0.0, Z_1, lc_inner),
+              model.occ.addPoint(X_core_1, Y_core_1, Z_1, lc_inner),
+              model.occ.addPoint(0.0, Y_core_1, Z_1, lc_inner)]
+
+    p_core_2 = [model.occ.addPoint(X_mgap_2, 0.0, Z_2, lc_inner),
+              model.occ.addPoint(X_core_2, 0.0, Z_2, lc_inner),
+              model.occ.addPoint(X_core_2, Y_core_2, Z_2, lc_inner),
+              model.occ.addPoint(0.0, Y_core_2, Z_2, lc_inner)]
+
+    # THESE ARE THE KEYPOINTS FOR THE RETURN YOKE
+    p_yoke_1 = [model.occ.addPoint(X_void_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_yoke_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_yoke_1, Y_yoke_1, Z_1, lc),
+              model.occ.addPoint(0.0, Y_yoke_1, Z_1, lc),
+              model.occ.addPoint(0.0, Y_core_1, Z_1, lc),
+              model.occ.addPoint(X_void_1, Y_core_1, Z_1, lc)]
+
+    p_yoke_2 = [model.occ.addPoint(X_void_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_yoke_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_yoke_2, Y_yoke_2, Z_2, lc),
+              model.occ.addPoint(0.0, Y_yoke_2, Z_2, lc),
+              model.occ.addPoint(0.0, Y_core_2, Z_2, lc),
+              model.occ.addPoint(X_void_2, Y_core_2, Z_2, lc)]
+
+    vol_core = add_SHiP_volume(model, p_core_1, p_core_2)
+    vol_yoke = add_SHiP_volume(model, p_yoke_1, p_yoke_2)
+
+    model.occ.synchronize()
+
+    if reflect_xz:
+
+        model.occ.mirror([(3, vol_core), (3, vol_yoke)], 0., 1., 0., 0.)
+        model.occ.synchronize()
+        # dim_tags, map = model.occ.fragment(vol_m, [(3, vol_1)])
+        # model.occ.synchronize()
+
+    return vol_core, vol_yoke
+
+def add_SHIP_iron_yoke_mag_4(model, X_A_1, X_B_1, X_C_1, X_D_1, X_E_1, X_F_1,
+                        X_A_2, X_B_2, X_C_2, X_D_2, X_E_2, X_F_2,
+                        Y_core_1, Y_yoke_1,
+                        Y_core_2, Y_yoke_2,
+                        Z_len, 
+                        Z_pos=0.0,
+                        lc=2e-1,
+                        lc_inner=-1,
+                        reflect_xz=False):
+    '''Add an iron yoke for the SHiP project to a gmsh model. This function is used for the Mag4 template
+    
+    :param X_A_1:
+        The the horizontal coordinate of the first keypoint (entrance).
+
+    :param X_B_1:
+        The the horizontal coordinate of the second keypoint (entrance).
+
+    :param X_C_1:
+        The the horizontal coordinate of the third keypoint (entrance).
+
+    :param X_D_1:
+        The the horizontal coordinate of the fourth keypoint (entrance).
+
+    :param X_E_1:
+        The the horizontal coordinate of the fifth keypoint (entrance).
+
+    :param X_F_1:
+        The the horizontal coordinate of the sixths keypoint (entrance).
+
+    :param X_yoke_1:
+        The horizontal coordinate of the end of the magnet end (entrance).
+
+    :param X_A_2:
+        The the horizontal coordinate of the first keypoint (exit).
+
+    :param X_B_2:
+        The the horizontal coordinate of the second keypoint (exit).
+
+    :param X_C_2:
+        The the horizontal coordinate of the third keypoint (exit).
+
+    :param X_D_2:
+        The the horizontal coordinate of the fourth keypoint (exit).
+
+    :param X_E_2:
+        The the horizontal coordinate of the fifth keypoint (exit).
+
+    :param X_F_2:
+        The the horizontal coordinate of the sixths keypoint (exit).
+
+    :param Y_void_1:
+        The vertical coordinate of the end of the void region. (entrance)
+
+    :param Y_yoke_1:
+        The vertical coordinate of the end of the iron yoke (entrance).
+
+    :param Y_void_2:
+        The vertical coordinate of the end of the void region (exit).
+
+    :param Y_yoke_2:
+        The horizontal coordinate of the end of the iron yoke (exit).
+
+    :param Z_len:
+        The length of the magnet in the z direction.
+
+    :param Z_pos:
+        The position of the magnet in the z direction.
+
+    :param show:
+        Set this flag to show the mesh in the gmsh gui.
+
+    :param lc:
+        A length scale parameter to control the mesh size.
+
+    :param lc_inner:
+        The legth scale parameter applied in the inner of the iron domain.
+        If negative it is ignored.
+
+    :param reflect_xz:
+        Reflect the fomain in the xz plane.
+
+    :return:
+        The gmsh model object as well as the labels of the physical groups for the two terminals.
+    '''
+
+    if lc_inner < 0:
+        lc_inner = lc
+
+    # the z position of the entrance
+    Z_1 = Z_pos
+
+    # the z position of the exit
+    Z_2 = Z_1 + Z_len
+
+    # THESE ARE THE KEYPOINTS FOR THE CORE
+    p_core_1 = [model.occ.addPoint(X_C_1, 0.0, Z_1, lc_inner),
+              model.occ.addPoint(X_D_1, 0.0, Z_1, lc_inner),
+              model.occ.addPoint(X_D_1, Y_core_1, Z_1, lc_inner),
+              model.occ.addPoint(X_C_1, Y_core_1, Z_1, lc_inner)]
+
+    p_core_2 = [model.occ.addPoint(X_C_2, 0.0, Z_2, lc_inner),
+              model.occ.addPoint(X_D_2, 0.0, Z_2, lc_inner),
+              model.occ.addPoint(X_D_2, Y_core_2, Z_2, lc_inner),
+              model.occ.addPoint(X_C_2, Y_core_2, Z_2, lc_inner)]
+
+    # THESE ARE THE KEYPOINTS FOR THE RETURN YOKE
+    p_yoke_1 = [model.occ.addPoint(X_A_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_B_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_B_1, Y_core_1, Z_1, lc),
+              model.occ.addPoint(X_E_1, Y_core_1, Z_1, lc),
+              model.occ.addPoint(X_E_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_F_1, 0.0, Z_1, lc),
+              model.occ.addPoint(X_F_1, Y_yoke_1, Z_1, lc),
+              model.occ.addPoint(X_A_1, Y_yoke_1, Z_1, lc)]
+
+    p_yoke_2 = [model.occ.addPoint(X_A_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_B_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_B_2, Y_core_2, Z_2, lc),
+              model.occ.addPoint(X_E_2, Y_core_2, Z_2, lc),
+              model.occ.addPoint(X_E_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_F_2, 0.0, Z_2, lc),
+              model.occ.addPoint(X_F_2, Y_yoke_2, Z_2, lc),
+              model.occ.addPoint(X_A_2, Y_yoke_2, Z_2, lc)]
+
+    vol_core = add_SHiP_volume(model, p_core_1, p_core_2)
+    vol_yoke = add_SHiP_volume(model, p_yoke_1, p_yoke_2)
+
+    model.occ.synchronize()
+
+    if reflect_xz:
+
+        model.occ.mirror([(3, vol_core), (3, vol_yoke)], 0., 1., 0., 0.)
+        model.occ.synchronize()
+        # dim_tags, map = model.occ.fragment(vol_m, [(3, vol_1)])
+        # model.occ.synchronize()
+
+    return vol_core, vol_yoke
+
 def compute_area_polygon(kp, isclosed=True):
     '''Compute the area of a non-intersecting (default = closed) polygon.
     Closed means that the first and last keypoints is identical. If this

@@ -595,6 +595,5 @@ class Dilution():
             self.m_den = m_yoke - m_void
             self.c_num = c_core - c_mgap
             self.c_den = c_yoke - c_void
-
         else:
             print(f"Magnet type {mag_type} unknown!")
