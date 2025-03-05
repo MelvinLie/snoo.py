@@ -1,0 +1,2 @@
+yoke_type,coil_material,max_turns,J_tar(A/mm2),coil_diam(mm),insulation(mm),yoke_spacer(mm),material,field_density,delta_x(m),delta_y(m),delta_z(m),NI(A),resol_x(m),resol_y(m),resol_z(m),Z_pos(m),Xmgap1(m),Xmgap2(m),Z_len(m),Xcore1(m),Xvoid1(m),Xyoke1(m),Xcore2(m),Xvoid2(m),Xyoke2(m),Ycore1(m),Yvoid1(m),Yyoke1(m),Ycore2(m),Yvoid2(m),Yyoke2(m)
+Mag3,copper_water_cooled.json,10,10,9,0.5,5,aisi1010.json,5,0.5,0.5,0.5,20000,0.02,0.02,0.05,-1.5,0,0,3,0.0559,0.0759,0.144408,0.6329,1,1.642648,0.7989,0.7989,0.867408,0.546,0.546,1.376148
