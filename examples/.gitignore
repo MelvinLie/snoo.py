@@ -1,0 +1,10 @@
+# Ignore everything
+*
+
+# But not these files...
+!.gitignore
+!plot_example_baseline.py
+!plot_example_geometry.py
+!plot_example_materials.py
+!plot_standard_analysis.py
+
