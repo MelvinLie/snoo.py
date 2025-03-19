@@ -30,7 +30,7 @@ else:
 
 
 # the parameters file
-params_df = pd.read_csv(os.path.join(directory, 'magnet_params_25_03_14.csv'))
+params_df = pd.read_csv(os.path.join(directory, 'baseline_1.csv'))
 
 # the number of magnets
 num_mag = params_df.values.shape[0]

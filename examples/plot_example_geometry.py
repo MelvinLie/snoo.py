@@ -22,7 +22,7 @@ import snoopy as snoopy
 out_dir = os.path.join('files', 'step_files')
 
 # the parameters file
-params_df = pd.read_csv(os.path.join('files', 'parameters', 'magnet_params_LF.csv'))
+params_df = pd.read_csv(os.path.join('files', 'parameters', 'example_try.csv'))
 
 # the number of magnets
 num_mag = params_df.values.shape[0]
