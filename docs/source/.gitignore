@@ -1,0 +1,10 @@
+# Ignore everything
+*
+
+# But not these folders
+!.gitignore
+auto_examples
+gen
+images
+gem_modules
+
