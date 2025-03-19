@@ -33,6 +33,7 @@ import json
 import snoopy.red_mvp_solver_diluted
 from .geometry_tools import compute_area_polygon
 from .materials import Reluctance
+from snoopy.evaluators import evaluate_fem_solution_node_interpolation
 
 import snoopy
 
@@ -142,6 +143,11 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
 
     valid_geometry = True
 
+
+    print(f"area 1 = {A1:.2f} m2")
+    print(f"area 2 = {A2:.2f} m2")
+    print(f"area 3 = {A3:.2f} m2")
+
     if parameters_df["yoke_type"][df_index] == 'Mag1' or parameters_df["yoke_type"][df_index] == 'Mag2':
 
         # the type 1 or 2 magnet
@@ -202,7 +208,7 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
 def compute_prices(magnet_parameters, df_index, M_iron,
                    M_coil, Q, electricity_costs=5.0/72000.0, runtime=72000,
                    materials_directory='files/materials',
-                   price_peanuts=0.5e-3):
+                   price_peanuts=0.5):
     '''Compute the costs of a magnet given the parameters iron mass,
     coil mass and power consumption.
     
@@ -232,7 +238,7 @@ def compute_prices(magnet_parameters, df_index, M_iron,
         The directory where to find the materials.
 
     :param price_peanuts:
-        The price of a peanut in peanuts/kCHF. Default is 0.5e-3. Yes, peanuts are expensive.
+        The price of a peanut in peanuts/CHF. Default is 0.5.
     
     :return:
         The costs for iron, coil and electricity.
@@ -255,6 +261,28 @@ def compute_prices(magnet_parameters, df_index, M_iron,
 
     return C_iron, C_coil, C_edf
 
+def compute_J_opt(conductor_material_data, kappa_elec):
+    '''Compute the optimal current density based on the material propoerties and
+    the electricity costs.
+
+    :param conductor_material_data:
+        The conductor material data.
+
+    :param kappa_elec:
+        The electricity costs.
+
+    :return:
+        The optimal current density in A/mm2.
+    '''
+    
+    kappa_cu = conductor_material_data["material_cost(CHF/kg)"]
+    kappa_cu += conductor_material_data["manufacturing_cost(CHF/kg)"]
+    dens = conductor_material_data["density(g/m3)"]
+    rho = conductor_material_data["resistivity(Ohm.m)"]
+
+    return np.sqrt(kappa_cu*dens*1e-3/kappa_elec/rho)*1e-6
+
+
 def get_vector_field_mag_1(parameters,
                   df_index=0, lc=0.2,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
@@ -263,7 +291,8 @@ def get_vector_field_mag_1(parameters,
                   materials_directory='files/materials',
                   quad_order=8,
                   max_coil_size=0.05,
-                  use_diluted_steel=False):
+                  use_diluted_steel=False,
+                  kappa_elec=5.0):
     '''Get the vector point cloud for the magnet 1 template.
     
     :params parameters:
@@ -311,7 +340,10 @@ def get_vector_field_mag_1(parameters,
     :param use_diluted_steel:
        Set this flag to true if You like to use a diluted steel in the
        return yoke.
-
+    
+    :param kappa_elec:
+        The costs for a W of power in CHF.
+    
     :return:
        The positions and field components in a 3D numpy grid.
     '''
@@ -331,7 +363,10 @@ def get_vector_field_mag_1(parameters,
         conductor_material_data = json.load(f)
 
     # get the target current density
-    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    if parameters["J_tar(A/mm2)"][df_index] < 0:
+        J_tar = compute_J_opt(conductor_material_data, kappa_elec)*1e6
+    else:
+        J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
 
     # ====================================================
     # mesh generation
@@ -382,9 +417,6 @@ def get_vector_field_mag_1(parameters,
         dilution_wing = snoopy.Dilution(X_mgap_1, X_core_1, X_void_1, X_yoke_1,
                                         X_mgap_2, X_core_2, X_void_2, X_yoke_2,
                                         Z_pos, Z_len)
-
-        # print(f"dilution num = {dilution_wing.m_num:.1f}z + {dilution_wing.c_num:.1f}")
-        # print(f"dilution den = {dilution_wing.m_den:.1f}z + {dilution_wing.c_den:.1f}")
 
     # the limits in x, y, and z
     lim_x = max([X_yoke_1, X_yoke_2]) + delta_x
@@ -548,9 +580,12 @@ def get_vector_field_mag_1(parameters,
     slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
 
     # this is the space we have available for the coils
-    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    A_geo = slot_size_horz*slot_size
 
-    # this is the coil size using the target current density
+    # this is the copper cross section using the target current density
+    A_cu = abs(current)/J_tar
+
+    # this is the coil cross section using the target current density (including the filling factor)
     A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
     # we compute the current density (for monitoring reasons)
@@ -601,14 +636,14 @@ def get_vector_field_mag_1(parameters,
         turn_perimeter = coil_list[0].get_length() +  coil_list[1].get_length()
 
     # this is the available coil volume
-    M_coil = A_coil*turn_perimeter*conductor_material_data['density(g/m3)']
+    M_coil = A_cu*turn_perimeter*conductor_material_data['density(g/m3)']
 
     # ====================================================
     # The power consumption
     if current == 0:
         Q = 0.0
     else:
-        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
     if plot_geo:
 
@@ -718,20 +753,25 @@ def get_vector_field_mag_1(parameters,
 
     if eval_pos.shape[0] > 0:
       
-       # ====================================================
-       # Evaluate at the given positions
+        # ====================================================
+        # Evaluate at the given positions
 
         if use_diluted_steel:
-            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
+            B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             coil_list,
+                                                             x,
+                                                             [dom_iron, dom_wing, dom_air])
+            
         else:
-            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
-
-        B_coil = 0.0*B_iron
-        for coil in coil_list:
-           B_coil += coil.compute_B(eval_pos)
-      
-        B_tot = B_coil + B_iron 
-
+            B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             coil_list,
+                                                             x,
+                                                             [dom_iron, dom_air])
+            
         if not result_directory == 'none':
            output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
 
@@ -748,7 +788,7 @@ def get_vector_field_mag_1(parameters,
     print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
     print('The coil surface is = {:.2f} m2'.format(A_coil))
     print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
-    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+    print('The current density is = {:.2f} A/mm2'.format(current_density*1e-6))
     print('The power consumption = {:.2f} W'.format(Q))
     print('**********************************************')
 
@@ -761,7 +801,8 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
                    eval_pos=np.zeros((0, 3)),
                    materials_directory='files/materials',
                    quad_order=8,
-                   max_coil_size=0.05):
+                   max_coil_size=0.05,
+                   kappa_elec=5.0):
     '''Get the vector point cloud for the magnet 2 template.
     
     :params parameters:
@@ -806,6 +847,9 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
     :param max_coil_size:
         The maximum coil size in m2.
 
+    :param kappa_elec:
+        The costs for a W of power in CHF.
+
     :return:
         The positions and field components in a 3D numpy grid.
     '''
@@ -825,7 +869,11 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
         conductor_material_data = json.load(f)
 
     # get the target current density
-    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    if parameters["J_tar(A/mm2)"][df_index] < 0:
+        J_tar = compute_J_opt(conductor_material_data, kappa_elec)*1e6
+    else:
+        J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+
 
     # ====================================================
     # mesh generation
@@ -1001,9 +1049,12 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
     slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
 
     # this is the space we have available for the coils
-    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    A_geo = slot_size_horz*slot_size
 
-    # this is the coil size using the target current density
+    # this is the cupper cross section using the target current density
+    A_cu = abs(current)/J_tar
+
+    # this is the coil cross section using the target current density (including the filling factor)
     A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
     # we compute the current density (for monitoring reasons)
@@ -1016,14 +1067,14 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
     turn_perimeter = coil.get_length()
 
     # this is the available coil volume
-    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+    M_coil = A_cu*turn_perimeter*conductor_material_data["density(g/m3)"]
 
     # ====================================================
     # The power consumption
     if current == 0.0:
         Q = 0.0
     else:
-        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
     if plot_geo:
 
@@ -1119,11 +1170,13 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
         # ====================================================
         # Evaluate at the given positions
 
-        B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_core, dom_yoke, dom_air], x, solver.get_global_ids())
-        B_coil = coil.compute_B(eval_pos)
-      
-        B_tot = B_coil + B_iron 
-
+        B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             [coil],
+                                                             x,
+                                                             [dom_core, dom_yoke, dom_air])
+            
         if not result_directory == 'none':
             output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
 
@@ -1133,6 +1186,16 @@ def get_vector_field_mag_2(parameters, df_index=0, lc=0.4,
 
         out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
                               columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
+
+    # print some feedback
+    print('**********************************************')
+    print('The iron mass is = {:.2f} t'.format(M_iron*1e-6))
+    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
+    print('The coil surface is = {:.2f} m2'.format(A_coil))
+    print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
+    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+    print('The power consumption = {:.2f} W'.format(Q))
+    print('**********************************************')
 
     return ret_vals
 
@@ -1144,7 +1207,8 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
                   materials_directory='files/materials',
                   quad_order=8,
                   max_coil_size=0.05,
-                  use_diluted_steel=False):
+                  use_diluted_steel=False,
+                  kappa_elec=5.0):
     '''Get the vector point cloud for the magnet 3 template.
     
     :params parameters:
@@ -1192,6 +1256,9 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
     :param use_diluted_steel:
         Set this flag if You like to use diluted steel in the core.
 
+    :param kappa_elec:
+        The costs for a W of power in CHF.
+
     :return:
         The positions and field components in a 3D numpy grid.
     '''
@@ -1210,7 +1277,11 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
         conductor_material_data = json.load(f)
 
     # get the target current density
-    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    if parameters["J_tar(A/mm2)"][df_index] < 0:
+        J_tar = compute_J_opt(conductor_material_data, kappa_elec)*1e6
+    else:
+        J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+
 
     # ====================================================
     # mesh generation
@@ -1264,7 +1335,7 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
         # setup the dilution
         dilution_wing = snoopy.Dilution(X_mgap_1, X_core_1, X_void_1, X_yoke_1,
                                         X_mgap_2, X_core_2, X_void_2, X_yoke_2,
-                                        Z_pos, Z_len, mag_type=3)
+                                        Z_pos, Z_len, mag_type=1)
        
 
     # the limits in x, y, and z
@@ -1275,30 +1346,31 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
    
     if use_diluted_steel:
         # the iron domain
-        vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_diluted_core(gmsh.model, X_mgap_1,
-                                                        X_core_1,
-                                                        X_void_1,
-                                                        X_yoke_1,
-                                                        X_mgap_2, 
-                                                        X_core_2,
-                                                        X_void_2,
-                                                        X_yoke_2,
-                                                        Y_core_1,
-                                                        Y_void_1,
-                                                        Y_yoke_1,
-                                                        Y_core_2,
-                                                        Y_void_2,
-                                                        Y_yoke_2,
-                                                        Z_len, 
-                                                        Z_pos=Z_pos,
-                                                        lc=lc,
-                                                        lc_inner=0.3*lc)
+        vol_iron_1, vol_iron_2 = snoopy.add_SHIP_iron_yoke_diluted_wing(gmsh.model, X_mgap_1,
+                                                                     X_core_1,
+                                                                     X_void_1,
+                                                                     X_yoke_1,
+                                                                     X_mgap_2, 
+                                                                     X_core_2,
+                                                                     X_void_2,
+                                                                     X_yoke_2,
+                                                                     Y_core_1,
+                                                                     Y_void_1,
+                                                                     Y_yoke_1,
+                                                                     Y_core_2,
+                                                                     Y_void_2,
+                                                                     Y_yoke_2,
+                                                                     Z_len,
+                                                                     Z_pos=Z_pos,
+                                                                     lc=lc,
+                                                                     lc_inner=0.2*lc)
+
         # the iron domain
         vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
         gmsh.model.occ.synchronize()
 
         # fragment perfoms something like a union
-        fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_core),(3, vol_yoke)])
+        fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_iron_1),(3, vol_iron_2)])
         gmsh.model.occ.synchronize()
 
         # we get the domains of the fragmentation
@@ -1441,9 +1513,12 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
     slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)   
 
     # this is the space we have available for the coils
-    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    A_geo = slot_size_horz*slot_size
 
-    # this is the coil size using the target current density
+    # this is the cupper cross section using the target current density
+    A_cu = abs(current)/J_tar
+
+    # this is the coil cross section using the target current density (including the filling factor)
     A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
     # we compute the current density (for monitoring reasons)
@@ -1457,7 +1532,7 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
     turn_perimeter = coil_list[0].get_length() + coil_list[1].get_length()
 
     # this is the available coil volume
-    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+    M_coil = A_cu*turn_perimeter*conductor_material_data["density(g/m3)"]
 
     # ====================================================
     # The power consumption
@@ -1465,7 +1540,7 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
     if current == 0.0:
         Q = 0.0
     else:
-        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+        Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
 
     if plot_geo:
@@ -1569,18 +1644,22 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
       
         # ====================================================
         # Evaluate at the given positions
-
         if use_diluted_steel:
-            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
+            B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             coil_list,
+                                                             x,
+                                                             [dom_iron, dom_wing, dom_air])
+            
         else:
-            B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_air], x, solver.get_global_ids())
-
-        B_coil = 0.0*B_iron
-        for coil in coil_list:
-            B_coil += coil.compute_B(eval_pos)
-      
-        B_tot = B_coil + B_iron 
-
+            B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             coil_list,
+                                                             x,
+                                                             [dom_iron, dom_air])
+            
         if not result_directory == 'none':
             output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
 
@@ -1590,6 +1669,16 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
 
         out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
                               columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
+
+    # print some feedback
+    print('**********************************************')
+    print('The iron mass is = {:.2f} t'.format(M_iron*1e-6))
+    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
+    print('The coil surface is = {:.2f} m2'.format(A_coil))
+    print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
+    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+    print('The power consumption = {:.2f} W'.format(Q))
+    print('**********************************************')
 
     return ret_vals
 
@@ -1601,7 +1690,8 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
                   materials_directory='files/materials',
                   quad_order=8,
                   max_coil_size=0.05,
-                  use_diluted_steel=False):
+                  use_diluted_steel=False,
+                  kappa_elec=5.0):
     '''Get the vector point cloud for the magnet 4 template.
     
     :params parameters:
@@ -1649,6 +1739,9 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     :param use_diluted_steel:
         Set this flag if You like to use diluted steel in the core.
 
+    :param kappa_elec:
+        The costs for a W of power in CHF.
+
     :return:
         The positions and field components in a 3D numpy grid.
     '''
@@ -1667,7 +1760,11 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
         conductor_material_data = json.load(f)
 
     # get the target current density
-    J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+    if parameters["J_tar(A/mm2)"][df_index] < 0:
+        J_tar = compute_J_opt(conductor_material_data, kappa_elec)*1e6
+    else:
+        J_tar = parameters["J_tar(A/mm2)"][df_index]*1e6
+
 
     # ====================================================
     # mesh generation
@@ -1736,15 +1833,15 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     z_max = Z_pos + Z_len + delta_z
 
     # the iron domain
-    vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_mag_4(gmsh.model, 
+    vol_core, vol_yoke = snoopy.add_SHIP_iron_yoke_mag_4(gmsh.model,
                                                          X_A_1, X_B_1, X_C_1, X_D_1, X_E_1, X_F_1,
                                                          X_A_2, X_B_2, X_C_2, X_D_2, X_E_2, X_F_2,
                                                          Y_core_1, Y_yoke_1,
                                                          Y_core_2, Y_yoke_2,
-                                                         Z_len, 
+                                                         Z_len,
                                                          Z_pos=Z_pos,
                                                          lc=lc,
-                                                         lc_inner=0.3*lc)
+                                                         lc_inner=lc)
     # the iron domain
     vol_air = gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
     gmsh.model.occ.synchronize()
@@ -1852,9 +1949,12 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
                           X_E_1 - X_D_1, X_E_2 - X_D_2,])   
 
     # this is the space we have available for the coils
-    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+    A_geo = slot_size_horz*slot_size
 
-    # this is the coil size using the target current density
+    # this is the cupper cross section using the target current density
+    A_cu = abs(current)/J_tar
+
+    # this is the coil cross section using the target current density (including the filling factor)
     A_coil = abs(current)/J_tar/conductor_material_data["filling_factor"]
 
     # we compute the current density (for monitoring reasons)
@@ -1865,7 +1965,7 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     turn_perimeter = coil_list[0].get_length() + coil_list[1].get_length()
 
     # this is the available coil volume
-    M_coil = A_coil*turn_perimeter*conductor_material_data["density(g/m3)"]
+    M_coil = A_cu*turn_perimeter*conductor_material_data["density(g/m3)"]
 
     print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
 
@@ -1873,7 +1973,7 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     # The power consumption
     print('The current density is = {} A/mm2'.format(current_density*1e-6))
 
-    Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+    Q = abs(current*current)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
     print('The power consumption = {:.2f} W'.format(Q))
 
@@ -1978,14 +2078,12 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
       
         # ====================================================
         # Evaluate at the given positions
-
-        B_iron = snoopy.evaluate_curl_curl_solution(eval_pos, gmsh.model, [dom_iron, dom_wing, dom_air], x, solver.get_global_ids())
-
-        B_coil = 0.0*B_iron
-        for coil in coil_list:
-            B_coil += coil.compute_B(eval_pos)
-      
-        B_tot = B_coil + B_iron 
+        B_tot = evaluate_fem_solution_node_interpolation(gmsh.model,
+                                                             eval_pos,
+                                                             solver,
+                                                             coil_list,
+                                                             x,
+                                                             [dom_iron, dom_wing, dom_air])
 
         if not result_directory == 'none':
             output_filename = os.path.join(result_directory, 'B' + result_spec + '.csv')
@@ -1996,6 +2094,17 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
 
         out_df = pd.DataFrame(data=np.append(eval_pos, B_tot, axis=1),
                               columns=['x(m)', 'y(m)', 'z(m)', 'Bx(T)', 'By(T)', 'Bz(T)']).to_csv(output_filename, index=False)
+
+
+    # print some feedback
+    print('**********************************************')
+    print('The iron mass is = {:.2f} t'.format(M_iron*1e-6))
+    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
+    print('The coil surface is = {:.2f} m2'.format(A_coil))
+    print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
+    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+    print('The power consumption = {:.2f} W'.format(Q))
+    print('**********************************************')
 
     return ret_vals
 

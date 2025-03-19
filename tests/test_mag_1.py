@@ -13,6 +13,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import snoopy
 
@@ -38,9 +39,15 @@ else:
 # the parameters file
 params_df = pd.read_csv(os.path.join(test_directory, 'parameters.csv'))
 
+
+# make the evaluatio positions
+X, Y = np.meshgrid(np.linspace(0.0, 2.0, 20),
+                   np.linspace(0.0, 2.0, 20))
+
 # the additional evaluation positions
-eval_pos = np.zeros((100, 3))
-eval_pos[:, 2] = np.linspace(-2.5, 2.5, 100)
+eval_pos = np.zeros((20*20, 3))
+eval_pos[:, 0] = X.flatten()
+eval_pos[:, 1] = Y.flatten()
 
 # %%
 # Compute the map
@@ -51,6 +58,10 @@ points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(params_df, 0,
                                    result_spec="_test_mag_1")
 
 B_eval = pd.read_csv(os.path.join(test_directory, 'B_test_mag_1.csv')).values
+
+# map_out = np.append(points, B, axis=1)
+# np.save(os.path.join(test_directory, 'map.npy'), map_out)
+
 
 # %%
 # Read the reference data
@@ -65,6 +76,6 @@ np.testing.assert_allclose(map_ref[:, :3], points)
 np.testing.assert_allclose(map_ref[:, 3:], B)
 np.testing.assert_allclose(B_eval_ref, B_eval)
 assert M_i == 241892319.99999994
-assert M_c == 746233.2470799219
-assert Q == 53069.17690171052
+assert M_c == 447739.94824795314
+assert Q == 88448.62816951754
 assert J == 10000000.0

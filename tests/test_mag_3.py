@@ -49,6 +49,7 @@ points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(params_df, 0,
 
 B_eval = pd.read_csv(os.path.join(test_directory, 'B_test_mag_3.csv')).values
 
+
 # %%
 # Read the reference data
 # =======================
@@ -63,6 +64,6 @@ np.testing.assert_allclose(map_ref[:, 3:], B)
 np.testing.assert_allclose(B_eval_ref, B_eval)
 
 assert M_i == 89058843.98683298
-assert M_c == 434229.4981427612
-assert Q == 30880.696006313327
+assert M_c == 260537.6988856567
+assert Q == 51467.82667718888
 assert J == 10000000.0

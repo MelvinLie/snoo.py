@@ -103,6 +103,30 @@ struct reluctance* make_reluctance(int type_spec,
 
 }
 
+struct dilution* make_dilution(double c_num,
+                                 double m_num,
+                                 double c_den,
+                                 double m_den){
+
+	// allocate the memory for the reluctance
+	dilution *dil	= (dilution*) calloc(1, sizeof(dilution));
+
+	// fill it
+	dil->c_num = c_num;
+	dil->c_den = c_den;
+    dil->m_num = m_num;
+    dil->m_den = m_den;
+
+	return dil;
+
+}
+
+double eval_dilution(const double z, const dilution* dil){
+
+    // simply evaluate the ratio of the lines
+    return (dil->c_num + z*dil->m_num)/(dil->c_den + z*dil->m_den);
+}
+
 double eval_pchip_interpolator(const int num_intervals, const double *c, const double *x_k, const double x){
 
     double f = 0;
@@ -1273,7 +1297,6 @@ void compute_K_dK_Hcurl_red(triplet_list *triplets_K,
                                                          rel_c->coefficients,
                                                          rel_c->knots,
                                                          B_mag[j]);
-
         }
 
         // sum over all combinations of basis functions (apply symmetry)
@@ -1338,8 +1361,6 @@ void compute_K_dK_Hcurl_red(triplet_list *triplets_K,
                 }
             }
 
-
-
         } 
 
         // zero the Jacobian
@@ -1348,6 +1369,19 @@ void compute_K_dK_Hcurl_red(triplet_list *triplets_K,
         }
                     
     }
+
+
+    // clean up
+    free(curl_v);
+    free(curl_u);
+    free(d_nu);
+    free(nu);
+    free(B_mag);
+    free(B);
+    free(grad_phi);
+    free(J_det);
+    free(J_inv);
+    free(J);
 
     return;
 
@@ -1528,6 +1562,202 @@ void compute_B_Hcurl(double *points,
 
 }
 
+void compute_K_dK_Hcurl_red_dil(triplet_list *triplets_K, 
+                    triplet_list *triplets_dK,
+                    double *rhs_c,
+                    const dilution *dil_c,
+                    const int *glob_ids_c,
+                    const reluctance *rel_c,
+                    const mesh *msh,
+                    const quad_3D *quad,
+                    const double *curls_c,
+                    const double *phi_c,
+                    const double *d_phi_c,
+                    const int *orientations_c,
+                    const double *x_c,
+                    const double *B_s){
+
+    // local variables
+    int i, j, k, l;                 // running indices
+    // triplet_list my_triplets_K;     // triplet lists for stiffness matrix
+    // triplet_list my_triplets_dK ;   // triplet lists for jacobian
+    int num_triplets;               // the number of triplets to fill the sparse matrix
+    int num_elements;               // the number of elements in the mesh
+    double* J;                      // Jacobians at the integration points 
+    double* J_inv;                  // inverse of the Jacobians at the integration points
+    double* J_det;                  // determinants of the Jacobians at the integration points
+    double* grad_phi;               // The gradients of the scalar potential
+    double *points;                 // The evaluation points in each finite element
+    double* B;                      // The components of the magnetic flux density vectors
+    double* B_mag;                  // The magnitudes of the magnetic flux density vectors
+    double* nu;                     // The reluctance
+    double* d_nu;                   // The reluctance derivative
+    double* curl_u;                 // The curls of the basis functions in the global coordinates
+    double* curl_v;                 // The curls of the basis functions in the global coordinates
+    double int_val_K;               // the integration value for the stiffness matrix
+    double int_val_dK;              // the integration value for the jacobian
+    double proj_u;                  // the projection of B onto the curl of the basis function
+    double proj_v;                  // the projection of B onto the curl of the test function
+    int offs;                       // offset in the curls array for the given orientation
+    int num_el_dofs;                // the number of DoFs per element
+    double nu_0 = 1.0/4.0/M_PI*1e7; // The vacuum reluctance
+    double scale_fac;               // The scaling factor determined from the dilution
+
+    // we will use these variables very often
+    int nodes_per_el = msh->num_nodes_per_element;
+    int num_quad = quad->num_points;
+
+    // get some info about the problem
+    num_triplets = triplets_K->num_triplets;
+    num_elements = msh->num_elements;
+
+    // calculate the number of DoFs per finite element
+    num_el_dofs = (int) sqrt(num_triplets/num_elements);
+
+
+    // allocate also the space for the Jacobians
+    J = (double*) calloc(9*num_quad, sizeof(double));
+    J_inv = (double*) calloc(9*num_quad, sizeof(double));
+    J_det = (double*) calloc(num_quad, sizeof(double));
+    grad_phi = (double*) calloc(3*num_quad, sizeof(double));
+
+    // allocate space for the evaluation positions in each finite element
+    points = (double*) calloc(3*num_quad, sizeof(double));
+
+    // allocate space for the B field evaluations
+    B = (double*) calloc(3*num_quad, sizeof(double));
+
+    // allocate space for the B field evaluations
+    B_mag = (double*) calloc(3*num_quad, sizeof(double));
+
+    // allocate space for the reluctances
+    nu = (double*) calloc(num_quad, sizeof(double));
+
+    // allocate space for the reluctance derivatives
+    d_nu = (double*) calloc(num_quad, sizeof(double));
+
+    // the curls of the basis functions in the global coordinates
+    curl_u = (double*) calloc(3, sizeof(double));
+    curl_v = (double*) calloc(3, sizeof(double));
+
+
+    // loop over all finite elements
+    //  // #pragma omp for
+    for(i = 0; i < num_elements; ++i){
+            
+
+        // compute the Jacobian of this element
+        compute_jacobian(J, &msh->cells[i*nodes_per_el], msh, num_quad, d_phi_c);
+            
+        // invert the jacobians and compute the determinants
+        invert_jacobians(J_det, J_inv, J, num_quad);
+       
+        // this is the offset in the curls array
+        offs = 3*num_quad*num_el_dofs*orientations_c[i];
+
+        // evaluate also the finite element for the position
+        evaluate_finite_element(points, &msh->cells[i*nodes_per_el], num_quad, nodes_per_el, phi_c, msh->nodes);
+
+        // compute the B field at the quadrature points
+        compute_B_in_element(B, &B_s[i*3*num_quad], num_quad, num_el_dofs, &glob_ids_c[i*num_el_dofs], x_c, &curls_c[offs], J, J_det);
+
+
+        // evaluate also the reluctance and its derivative and store the B mag values
+        for (j = 0; j < num_quad; ++j){
+
+            scale_fac = eval_dilution(points[3*j + 2], dil_c);
+
+            B_mag[j] = sqrt(B[3*j]*B[3*j] + B[3*j+1]*B[3*j+1] + B[3*j+2]*B[3*j+2]);
+
+            nu[j] = scale_fac*eval_pchip_interpolator(rel_c->num_intervals,
+                                            rel_c->coefficients,
+                                            rel_c->knots,
+                                            scale_fac*B_mag[j]);
+
+            d_nu[j] = scale_fac*scale_fac*eval_pchip_interpolator_derivative(rel_c->num_intervals,
+                                                         rel_c->coefficients,
+                                                         rel_c->knots,
+                                                         scale_fac*B_mag[j]);
+
+        }
+
+        // sum over all combinations of basis functions (apply symmetry)
+        for (j = 0; j < num_el_dofs; ++j){
+
+            for (k = j; k < num_el_dofs; ++k){
+                
+                // reset the integration values
+                int_val_K = 0.0;
+                int_val_dK = 0.0;
+
+                // integrate
+                for (l = 0; l < num_quad; ++l){
+                    
+                    // transform the curls to the global frame
+                    mat_vec(curl_u, &J[9*l], &curls_c[offs + 3*(l*num_el_dofs + j)], 0);
+                    mat_vec(curl_v, &J[9*l], &curls_c[offs + 3*(l*num_el_dofs + k)], 0);
+
+                    // increment the integration value for K
+                    int_val_K += nu[l]*(curl_u[0]*curl_v[0] + curl_u[1]*curl_v[1] + curl_u[2]*curl_v[2])*quad->weights[l]/J_det[l];
+
+                    // increment the integration value for dK
+                    if (B_mag[l] >= 1e-14){
+
+                        // compute the scalar products curl_u.B and curl_v.B
+                        proj_u = curl_u[0]*B[3*l] + curl_u[1]*B[3*l+1] + curl_u[2]*B[3*l+2];
+                        proj_v = curl_v[0]*B[3*l] + curl_v[1]*B[3*l+1] + curl_v[2]*B[3*l+2];
+
+                        // increment the integration value for dK
+                        int_val_dK += d_nu[l]*proj_u*proj_v*quad->weights[l]/J_det[l]/B_mag[l];
+                    }
+
+                    if(j == k){
+                        // increment the integration value for the right hand side
+                        rhs_c[glob_ids_c[i*num_el_dofs + j]] += (nu_0 - nu[l])*(curl_u[0]*B_s[3*(i*num_quad + l)] + curl_u[1]*B_s[3*(i*num_quad + l) + 1] + curl_u[2]*B_s[3*(i*num_quad + l) + 2])*quad->weights[l];                        
+                    }
+                    
+                }
+
+                // fill the triplet list
+                triplets_K->row[triplets_K->counter] = glob_ids_c[i*num_el_dofs + j];
+                triplets_K->col[triplets_K->counter] = glob_ids_c[i*num_el_dofs + k];
+                triplets_K->vals[triplets_K->counter] = int_val_K;
+                triplets_K->counter += 1;
+
+                triplets_dK->row[triplets_dK->counter] = glob_ids_c[i*num_el_dofs + j];
+                triplets_dK->col[triplets_dK->counter] = glob_ids_c[i*num_el_dofs + k];
+                triplets_dK->vals[triplets_dK->counter] = int_val_dK;
+                triplets_dK->counter += 1;
+
+                // apply symmetry
+                if(j != k){
+                    triplets_K->row[triplets_K->counter] = glob_ids_c[i*num_el_dofs + k];
+                    triplets_K->col[triplets_K->counter] = glob_ids_c[i*num_el_dofs + j];
+                    triplets_K->vals[triplets_K->counter] = int_val_K;
+                    triplets_K->counter += 1;
+
+                    triplets_dK->row[triplets_dK->counter] = glob_ids_c[i*num_el_dofs + k];
+                    triplets_dK->col[triplets_dK->counter] = glob_ids_c[i*num_el_dofs + j];
+                    triplets_dK->vals[triplets_dK->counter] = int_val_dK;
+                    triplets_dK->counter += 1;
+                }
+            }
+
+
+
+        } 
+
+        // zero the Jacobian
+        for (j = 0; j < 9*num_quad; ++j){
+            J[j] = 0.;
+        }
+                    
+    }
+
+    return;
+
+}
+
 void compute_B_line_segs(double* B_ret, const double *src, const double *tar, const double current, const double rad, const int num_src, const int num_tar){
 /**
     * Evaluate the B field based on the (5.51) in Field Computation for Accelerator Magnets.
@@ -1680,10 +1910,13 @@ void compute_B_line_segs(double* B_ret, const double *src, const double *tar, co
             }
             
         }
-        
+   
+    free(my_B);
+            
     }
     
     if (enable_print == 1) printf("done\n");
+   
 
     return;
 

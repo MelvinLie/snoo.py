@@ -170,13 +170,13 @@ class RedMVPSolver():
 
         print('***********************')
         print('start Newton iterations')
-        for i in range(self.max_newton_iterations):
+        for i in range(self.max_newton_iterations): 
 
             # compute the stiffness and Jacobi matrix
             K, J, rhs = self.curl_curl_factory.compute_stiffness_and_jacobi_matrix_c(x_n,
                                                                 quad_order=self.quad_order,
                                                                 source_fields=source_fields)
-
+            
             # compute right hand side
             b =  J @ x_n - K @ x_n + rhs
 
@@ -198,7 +198,6 @@ class RedMVPSolver():
                 xx, _ = cg(J_c, b[mask], atol=tolerance, x0=x_n[mask], M=M)
             else:
                 xx, _ = cg(J_c, b[mask], atol=tolerance, x0=x_n[mask], M=M, maxiter=maxiter)
-
 
             # we need to get back to the full solution vector
             x_np1 = 0.0*x_n

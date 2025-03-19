@@ -38,7 +38,6 @@ def compute_grad_phi(c, x, d_phi, inv_J):
     grad_phi[:, 1] = d_phi[:, :, 1] @ x[c]
     grad_phi[:, 2] = d_phi[:, :, 2] @ x[c]
 
-
     # transform it to the global domain
     for m in range(num_eval):
         grad_phi[m, :] = inv_J[m, :, :].T @ grad_phi[m, :]
@@ -294,3 +293,157 @@ def evaluate_curl_curl_solution(positions, gmsh_model, vol_tags, solution, glob_
             outside_mask[i] = True
 
     return B_ret
+
+def evaluate_interpolation(positions, gmsh_model, vol_tags, nodal_values):
+    '''Compute a FEM interpolation at certain posisions.
+
+    :param positions:
+        A numpy array of size (M x 3) with the coordinates in the columns.
+
+    :param gmsh_model:
+        The gmsh model object.
+
+    :param vol_tags:
+        The gmsh volume tags.
+            
+    :param nodal_values:
+        A list of nodal values vectors. There should be one vector for each domain.
+
+    :return:
+        A numpy matrix of dimension (M x N) where M is the number of evaluation
+        positions and N is the number of coordinates of the nodal values. 
+    '''
+
+    # the number of positions
+    num_pos = positions.shape[0]
+
+    # the number of coordinates
+    if len(nodal_values[0].shape) == 1:
+        num_coords = 1
+    else:
+        num_coords = nodal_values[0].shape[1]
+
+    # The nodes are not sorted correctly. I don't know why...
+    # But we need to get them like this:
+    node_tags, _, _ = gmsh_model.mesh.getNodes()
+    num_nodes = len(node_tags)
+    node_tags = np.unique(node_tags)
+
+    # we now make an array of unique mesh nodes.
+    nodes = np.zeros((num_nodes, 3))
+
+    for i in range(num_nodes):
+        nodes[i, :] = gmsh_model.mesh.getNode(node_tags[i])[0]
+
+    # we now allocate a return vector
+    field = np.zeros((num_pos, num_coords))
+
+    # this is a mask for the outside points
+    outside_mask = np.zeros((num_pos, ), dtype=bool)
+
+    # for some reason, gmsh renumbers nodes...
+    # we need to make a mapping between gmsh node tags and my node tags
+    node_map = np.zeros((num_nodes, ), dtype=np.int64)
+
+    # loop over all nodes
+    for i in range(num_nodes):
+        # get the coordinates
+        coord, _, _, _ = gmsh_model.mesh.get_node(i+1)
+        # search for this nodes in my nodes
+        diff_x = coord[0] - nodes[:, 0]
+        diff_y = coord[1] - nodes[:, 1]
+        diff_z = coord[2] - nodes[:, 2]
+        # the distance
+        dist = np.sqrt(diff_x*diff_x + diff_y*diff_y + diff_z*diff_z)
+        # get the minimum
+        node_map[i] = np.argmin(dist)
+
+    # this variable will be used as a domain specifyer
+    domain_spec = -1
+
+    # we loop over all of the positions
+    for i in range(num_pos):
+
+        for j, v in enumerate(vol_tags):
+
+            # check if this point is inside or outside
+            is_inside = gmsh_model.is_inside(3, v, positions[i, :])
+
+            if is_inside:
+                domain_spec = j
+                break
+
+        if is_inside:
+
+            # get the element and local coordinates
+            _, el_type, \
+            node_tags, \
+            u, v, w = gmsh_model.mesh.get_element_by_coordinates(positions[i, 0],
+                                                                 positions[i, 1],
+                                                                 positions[i, 2], dim=3)
+
+            # the node indices of my numbering
+            node_indx = node_map[node_tags-1]
+
+            # make the finite element
+            finite_element = FiniteElement(el_type)
+
+            # evaluate the derivatives at these points
+            phi = finite_element.evaluate_basis(np.array([[u, v, w]]).flatten())
+
+            # compute the field
+            if num_coords == 1:
+                field[i] = phi @ nodal_values[domain_spec][node_indx]
+            else:
+                for j in range(num_coords):
+                    field[i, j] = phi @ nodal_values[domain_spec][node_indx, j]
+
+        else:
+
+            # mark this point as outside
+            outside_mask[i] = True
+
+    return field
+
+def evaluate_fem_solution_node_interpolation(gmsh_model, points, solver, coil_list, x, domain_list):
+    '''Evaluate a FEM solution by nodal interpolation.
+
+    :param gmsh_model:
+        The gmsh model. This stores the information of the mesh and its entities.
+
+    :param points:
+        The evaluation points.
+
+    :param solver:
+        The solver.
+
+    :param coil_list:
+        The list of coils.
+
+    :param x:
+        The solution vector.
+
+    :param domain inices.
+        A list of domains to interpolate the solution in.
+
+    :return:
+        The B fields at the evaluation points.
+    '''
+
+    # these are the node positions
+    nodes = solver.curl_curl_factory.nodes
+
+    # the coil fields at the nodes
+    b_coil = 0.0*nodes
+    for coil in coil_list:
+        b_coil += coil.compute_B(nodes)
+
+    # the B fields at the nodes of the mesh one element for each material
+    b_node_list = []
+
+    # loop over the domains
+    for indx in domain_list:
+        # lets average the element fields to get the nodal fields
+        b_node_list.append(solver.curl_curl_factory.compute_nodal_fields(x, [indx-1]) + b_coil)
+
+    return evaluate_interpolation(points, gmsh_model, domain_list, b_node_list)

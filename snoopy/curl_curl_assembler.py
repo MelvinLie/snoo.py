@@ -1797,7 +1797,6 @@ class CurlCurlAssembler():
                 B = np.append(B, this_B, axis=0)
 
         return points, B
-    
 
     def compute_A(self, x, quad_order=8):
         '''Compute A for a given solution vector.
@@ -2083,3 +2082,111 @@ class CurlCurlAssembler():
         K = csr_array((all_vals, (all_ij[:, 0], all_ij[:, 1])), shape=(self.num_dofs, self.num_dofs))
 
         return K
+
+    def compute_nodal_fields(self, x, mat_ids):
+        '''Compute the fields at the mesh nodes by element averaging.
+        At the moment we consider only lowest order FEM solutions, where
+        the fields in the elements are constant.
+
+        :param x:
+            The soluion vector.
+
+        :param mat_id:
+            The material identifyers (list of integers).
+
+        :return:
+            The sparse stiffness matrix.
+        '''
+
+        # get the number of nodes
+        num_nodes = self.nodes.shape[0]
+
+        # the B fields at the nodes
+        B_ret = np.zeros((num_nodes, 3))
+
+        # the node multiplicity
+        multiplicity = np.zeros((num_nodes, ), dtype=np.int64)
+
+        # loop over all materials
+        for n in mat_ids:
+
+            # get the geometry info of this volume
+            cell_types = self.cell_types[n]
+            cells = self.cells[n]
+
+            # get the global orientations of the finite elements
+            orientations = get_vector_basis_orientations(self.mesh,
+                                                         self.cell_tags[n],
+                                                         element_spec='CurlHcurlLegendre' + str(self.element_order-1))
+
+            # loop over cell types
+            for i, ct in enumerate(cell_types):
+
+                # make the finite element
+                finite_element = FiniteElement(ct)
+
+                # the numebr fo element nodes
+                el_nodes = finite_element.get_number_of_nodes()
+
+                # the number of elements of this type
+                num_el = np.int32(len(cells[i]) / el_nodes)
+
+                # get the mesh connectivity
+                c = cells[i].copy()
+                c.shape = (num_el, el_nodes)
+
+                # get the quadrature nodes and weights
+                _, q = finite_element.get_quadrature_rule(0)
+
+                # the number of quadrature points
+                num_quad_pts = np.int32(len(q) / 3)
+
+                # evaluate the curls of the edge shape functions at the integration points
+                curls, _ = finite_element.get_curl_edge_basis_functions(self.mesh, q, ct, self.element_order)
+
+                # evaluate the derivatives of the lagrange basis functions at these points
+                d_phi = finite_element.evaluate_basis_derivative(q)
+
+                # get the global ids
+                glob_ids = self.global_ids[n]
+
+                # the number of DoFs for the edge elements per finite element
+                num_el_dofs = get_num_edge_dofs(self.element_order)
+
+                # loop over the finite elements
+                for j, e in enumerate(c):
+
+                    J = finite_element.compute_J(e - 1, self.nodes, d_phi)
+                    det_J = finite_element.compute_J_det(J)
+
+                    # get the  basis functions with this orientations
+                    curl_w_hat = curls[3*orientations[j]*num_quad_pts*num_el_dofs:3*(orientations[j]+1)*num_quad_pts*num_el_dofs]
+
+                    # the B field vector in the center of this element
+                    this_B = 0
+
+                    #compute all products 1/det(dF)*(dF.w)^T v(B) (dF.w)
+                    for k in range(num_el_dofs):
+
+                        # the basis function in local coordinates
+                        curl_w_hat_k = np.array([curl_w_hat[3*k],
+                                                curl_w_hat[3*k + 1],
+                                                curl_w_hat[3*k + 2]])
+
+                        # the basis function in global coordinates
+                        this_B += J[0, :, :] @ curl_w_hat_k * x[glob_ids[j, k] - 1] / det_J[0]
+
+                    B_ret[e-1, 0] += this_B[0]
+                    B_ret[e-1, 1] += this_B[1]
+                    B_ret[e-1, 2] += this_B[2]
+                    multiplicity[e-1] += 1
+
+
+        # average over the elements
+        mask = multiplicity != 0
+
+        B_ret[mask, 0] /= multiplicity[mask]
+        B_ret[mask, 1] /= multiplicity[mask]
+        B_ret[mask, 2] /= multiplicity[mask]
+        
+        return B_ret
