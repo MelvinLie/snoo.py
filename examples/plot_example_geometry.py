@@ -18,8 +18,11 @@ import snoopy as snoopy
 # Script parameters
 # =================
 
+# the output directory for the step files
+out_dir = os.path.join('files', 'step_files')
+
 # the parameters file
-params_df = pd.read_csv(os.path.join('files', 'parameters', 'baseline_1_mod_2.csv'))
+params_df = pd.read_csv(os.path.join('files', 'parameters', 'magnet_params_LF.csv'))
 
 # the number of magnets
 num_mag = params_df.values.shape[0]
@@ -30,7 +33,6 @@ maps = []
 # set this flag to plot the configuration
 plot_config = True
 
-
 # %%
 # Loop over all magnets
 # =====================
@@ -38,7 +40,6 @@ plot_config = True
 if plot_config:
    # In case plot config is enabled, we open a pyvista plotter
    pl = pv.Plotter()
-
 
 # We loop over all magnets
 for i in range(num_mag):
@@ -49,7 +50,8 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_1(pl, params_df, i, opacity=1, show_edges=True)
+         snoopy.plot_geometry_mag_1(pl, params_df, i, opacity=1, show_edges=True,
+                                    step_filename=os.path.join(out_dir, f"mag_{i}.step"))
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_1 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
    if params_df['yoke_type'][i] == 'Mag2':
@@ -58,7 +60,8 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_2(pl, params_df, i, opacity=1, show_edges=True)
+         snoopy.plot_geometry_mag_2(pl, params_df, i, opacity=1, show_edges=True,
+                                    step_filename=os.path.join(out_dir, f"mag_{i}.step"))
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_2 in T', mag=0.01, sym_yz=1, sym_xz=2)
 
    if params_df['yoke_type'][i] == 'Mag3':
@@ -67,7 +70,8 @@ for i in range(num_mag):
       # maps.append((points, B))
 
       if plot_config:
-         snoopy.plot_geometry_mag_3(pl, params_df, i, opacity=1, show_edges=True)
+         snoopy.plot_geometry_mag_3(pl, params_df, i, opacity=1, show_edges=True,
+                                    step_filename=os.path.join(out_dir, f"mag_{i}.step"))
          # snoopy.plot_vector_field(pl, maps[i][0], maps[i][1], title='B_3 in T', mag=0.05, sym_yz=1, sym_xz=2)
 
 

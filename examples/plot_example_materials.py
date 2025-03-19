@@ -33,7 +33,8 @@ else:
 # ==========================
 material_files = ['files\\materials\\aisi1010.json',
                   'files\\materials\\bhiron_1.json',
-                  'files\\materials\\pure_iron_comsol.json']
+                  'files\\materials\\pure_iron_comsol.json',
+                  'files\\materials\\iron_pw.json']
 
 # %%
 # Open a figure

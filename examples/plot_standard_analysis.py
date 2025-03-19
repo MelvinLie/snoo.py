@@ -45,7 +45,7 @@ else:
 PLOT_CONFIG = True
 
 # the parameters file
-params_df = pd.read_csv(os.path.join(directory, '25_03_05_test.csv'))
+params_df = pd.read_csv(os.path.join(directory, 'baseline_1.csv'))
 
 # the magnets in the parameters file to analyse
 magnet_numbers = [0]

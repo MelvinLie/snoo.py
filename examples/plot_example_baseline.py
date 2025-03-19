@@ -30,7 +30,7 @@ else:
 
 
 # the parameters file
-params_df = pd.read_csv(os.path.join(directory, 'baseline_1.csv'))
+params_df = pd.read_csv(os.path.join(directory, 'magnet_params_25_03_14.csv'))
 
 # the number of magnets
 num_mag = params_df.values.shape[0]
@@ -61,7 +61,7 @@ for i in range(num_mag):
         points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(params_df, i,
                                   materials_directory=materials_directory)
         maps.append((points, B))
-        
+
         C_i, C_c, C_edf = snoopy.compute_prices(params_df, i, M_i, M_c, Q)
 
         cost_parameters[i, :] = np.array([M_i, C_i, M_c, C_c, Q, C_edf, J])
@@ -127,14 +127,17 @@ ax.bar(np.linspace(1, num_mag, num_mag)-0.25, cost_parameters[:, 1]*1e-3, color=
 ax.bar(np.linspace(1, num_mag, num_mag), cost_parameters[:, 3]*1e-3, color='C1', width=0.2, label='Coil')
 ax.bar(np.linspace(1, num_mag, num_mag)+0.25, cost_parameters[:, 5]*1e-3, color='C2', width=0.2, label='Electricity')
 ax.legend()
-ax.set_title('Costs in kCHF')
+ax.set_title('Costs in peanuts')
 ax.set_xlabel('magnet number')
 plt.show()
 
 if PLOT_CONFIG:
-    pl.show_grid()
+    # pl.show_grid()
     pl.camera_position = 'zy'
     pl.camera.elevation = 35
     pl.camera.azimuth = 45
     pl.add_axes()
     pl.show()
+
+total_cost = np.sum(cost_parameters[:, 1] + cost_parameters[:, 3] + cost_parameters[:, 5])
+print(f"The total cost is {total_cost*1e-3:.1f} mega peanuts")
