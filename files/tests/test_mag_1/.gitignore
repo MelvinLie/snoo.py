@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# But not these files...
+!.gitignore
+!B_eval_ref.csv
+!map.npy
+!parameters.csv
