@@ -5,3 +5,7 @@
 !.gitignore
 !baseline_1.csv
 !example_try.csv
+!single_magnet.json
+!coil_geometry.csv
+!yoke_geometry.csv
+!core_geometry.csv

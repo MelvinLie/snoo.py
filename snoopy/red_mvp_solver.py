@@ -60,7 +60,7 @@ class RedMVPSolver():
         self.coil_list = coil_list
 
         # append all domain tags for the vector potential solver
-        domain_tags = iron_tags + air_tags
+        self.domain_tags = iron_tags + air_tags
 
         # append all material properties
         material_properties = reluctances + [ConstantReluctance(0.25/np.pi*1e7)]*len(air_tags)
@@ -84,7 +84,7 @@ class RedMVPSolver():
 
         # setup the matrix factory for the vector potential solver
         self.curl_curl_factory = CurlCurlAssembler(gmsh_model.mesh,
-                                                    domain_tags,
+                                                    self.domain_tags,
                                                     material_properties,
                                                     element_order)
 

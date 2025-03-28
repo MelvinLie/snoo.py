@@ -1,0 +1,15 @@
+{
+    "core_geometry_filename": "core_geometry.csv",
+    "core_material_filename": "bhiron_1.json",
+    "yoke_geometry_filename": "yoke_geometry.csv",
+    "yoke_material_filename": "bhiron_1.json",
+    "magnet_length(m)": 7.2,
+    "mesh_size_core": 0.2,
+    "mesh_size_yoke": 0.2,
+    "bounding_box_extension": [1.0, 1.0, 2.0],
+    "bounding_box_mesh_size_parameter": 0.5,
+    "winding_radius": 0.1, 
+    "coil_geometry_filename": "coil_geometry.csv"
+
+}
+

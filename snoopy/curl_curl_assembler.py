@@ -131,6 +131,9 @@ class CurlCurlAssembler():
         # the number of nodes
         num_nodes = self.nodes.shape[0]
 
+        # store also the volume tags
+        self.volume_tags = volume_tags
+
         return None
     
     def setup_mesh(self, nodes, cells, cell_types):
@@ -2108,7 +2111,9 @@ class CurlCurlAssembler():
         multiplicity = np.zeros((num_nodes, ), dtype=np.int64)
 
         # loop over all materials
-        for n in mat_ids:
+        for mid in mat_ids:
+                       
+            n = self.volume_tags.index(mid)
 
             # get the geometry info of this volume
             cell_types = self.cell_types[n]

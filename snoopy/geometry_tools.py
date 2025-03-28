@@ -498,6 +498,106 @@ def add_SHIP_iron_core(model, X_core_1, X_core_2, Y_core_1, Y_core_2,
 
     return vol_1
 
+def add_SHIP_box(model, X_1, Y_1, Z_1, W, H, L, lc=2e-1, sym_xz=True):
+    '''Add a box for the SHiP project to a gmsh model.
+    
+    :param X_1:
+        The horizontal coordinate of the inner, bottom corner.
+
+    :param Y_1:
+        The vertical coordinate of the inner, bottom corner.
+
+    :param Z_1:
+        The longitudinal coordinate of the inner, bottom corner.
+
+    :param W:
+        The width of the box in x direction (positive from corner (X_1, Y_1, Z_1))
+
+    :param H:
+        The height of the box in x direction (positive from corner (X_1, Y_1, Z_1))
+
+    :param L:
+        The length of the box in x direction (positive from corner (X_1, Y_1, Z_1))
+
+    :param lc:
+        A length scale parameter to control the mesh size.
+
+    :param sym_xz:
+        Set this flag to true if You want to apply symmetry in the xz plane.
+        
+    :return:
+        The gmsh model object.
+    '''
+
+    # THIS IS THE CORE
+
+    if sym_xz:
+        # make the points in the xy plane (entrance)
+        p1_1 = model.occ.addPoint(X_1, Y_1, Z_1, lc)
+        p2_1 = model.occ.addPoint(X_1 + W, Y_1, Z_1, lc)
+        p3_1 = model.occ.addPoint(X_1 + W, Y_1 + H, Z_1, lc)
+        p4_1 = model.occ.addPoint(X_1, Y_1 + H, Z_1, lc)
+    else:
+        # make the points in the xy plane (entrance)
+        p1_1 = model.occ.addPoint(X_1, Y_1 - H, Z_1, lc)
+        p2_1 = model.occ.addPoint(X_1 + W, Y_1 - H, Z_1, lc)
+        p3_1 = model.occ.addPoint(X_1 + W, Y_1 + H, Z_1, lc)
+        p4_1 = model.occ.addPoint(X_1, Y_1 + H, Z_1, lc)
+
+
+    # connect the keypoints by lines (entrance)
+    l1_1 = model.occ.addLine(p1_1, p2_1)
+    l2_1 = model.occ.addLine(p2_1, p3_1)
+    l3_1 = model.occ.addLine(p3_1, p4_1)
+    l4_1 = model.occ.addLine(p4_1, p1_1)
+
+    if sym_xz:
+        # make the points in the xy plane (exit)
+        p1_2 = model.occ.addPoint(X_1, Y_1, Z_1 + L, lc)
+        p2_2 = model.occ.addPoint(X_1 + W, Y_1, Z_1 + L, lc)
+        p3_2 = model.occ.addPoint(X_1 + W, Y_1 + H, Z_1 + L, lc)
+        p4_2 = model.occ.addPoint(X_1, Y_1 + H, Z_1 + L, lc)
+    else:
+        # make the points in the xy plane (exit)
+        p1_2 = model.occ.addPoint(X_1, Y_1 - H, Z_1 + L, lc)
+        p2_2 = model.occ.addPoint(X_1 + W, Y_1 - H, Z_1 + L, lc)
+        p3_2 = model.occ.addPoint(X_1 + W, Y_1 + H, Z_1 + L, lc)
+        p4_2 = model.occ.addPoint(X_1, Y_1 + H, Z_1 + L, lc)
+        
+    # connect the keypoints by lines (exit)
+    l1_2 = model.occ.addLine(p1_2, p2_2)
+    l2_2 = model.occ.addLine(p2_2, p3_2)
+    l3_2 = model.occ.addLine(p3_2, p4_2)
+    l4_2 = model.occ.addLine(p4_2, p1_2)
+    
+    # connect the entrance and exit by lines
+    l1_12 = model.occ.addLine(p1_1, p1_2)
+    l2_12 = model.occ.addLine(p2_1, p2_2)
+    l3_12 = model.occ.addLine(p3_1, p3_2)
+    l4_12 = model.occ.addLine(p4_1, p4_2)
+        
+    # make all curve loops
+    c1 = model.occ.addCurveLoop([l1_1, l2_1, l3_1, l4_1])
+    c2 = model.occ.addCurveLoop([l1_2, l2_2, l3_2, l4_2])
+    c3 = model.occ.addCurveLoop([l1_1, l2_12, l1_2, l1_12])
+    c4 = model.occ.addCurveLoop([l2_1, l3_12, l2_2, l2_12])
+    c5 = model.occ.addCurveLoop([l3_1, l4_12, l3_2, l3_12])
+    c6 = model.occ.addCurveLoop([l4_1, l1_12, l4_2, l4_12])
+    
+    # make the surfaces
+    s1 = model.occ.addPlaneSurface([c1])
+    s2 = model.occ.addPlaneSurface([c2])
+    s3 = model.occ.addPlaneSurface([c3])
+    s4 = model.occ.addPlaneSurface([c4])
+    s5 = model.occ.addPlaneSurface([c5])
+    s6 = model.occ.addPlaneSurface([c6])
+    
+    # make the iron and air domains
+    sl_1 = model.occ.addSurfaceLoop([s1, s2, s3, s4, s5, s6])
+    vol_1 = model.occ.addVolume([sl_1])
+
+    return vol_1
+
 def add_SHIP_iron_yoke_diluted_wing(model, X_mgap_1, X_core_1, X_void_1, X_yoke_1,
                         X_mgap_2, X_core_2, X_void_2, X_yoke_2,
                         Y_core_1, Y_void_1, Y_yoke_1,
@@ -743,12 +843,14 @@ def add_SHiP_volume(model, points_1, points_2):
     c_12 = [model.occ.addCurveLoop([l_1[i], l_12[i+1], l_2[i], l_12[i]])
                                     for i in range(num_points-1)]
     c_12.append(model.occ.addCurveLoop([l_1[-1], l_12[0], l_2[-1], l_12[-1]]))
+    
+    gmsh.model.occ.synchronize()
 
     # add plane surfaces
-    s = [model.occ.addPlaneSurface([c_1]),
-         model.occ.addPlaneSurface([c_2])]
+    s = [model.occ.addSurfaceFilling(c_1),
+         model.occ.addSurfaceFilling(c_2)]
     for i, cc in enumerate(c_12):
-        s.append(model.occ.addPlaneSurface([cc]))
+        s.append(model.occ.addSurfaceFilling (cc))
 
     # make surface loop
     sl = model.occ.addSurfaceLoop(s)

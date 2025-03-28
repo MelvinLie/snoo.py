@@ -363,13 +363,15 @@ def evaluate_interpolation(positions, gmsh_model, vol_tags, nodal_values):
 
     # we loop over all of the positions
     for i in range(num_pos):
-
+              
         for j, v in enumerate(vol_tags):
 
             # check if this point is inside or outside
             is_inside = gmsh_model.is_inside(3, v, positions[i, :])
+            
 
             if is_inside:
+
                 domain_spec = j
                 break
 
@@ -382,6 +384,7 @@ def evaluate_interpolation(positions, gmsh_model, vol_tags, nodal_values):
                                                                  positions[i, 1],
                                                                  positions[i, 2], dim=3)
 
+
             # the node indices of my numbering
             node_indx = node_map[node_tags-1]
 
@@ -390,6 +393,8 @@ def evaluate_interpolation(positions, gmsh_model, vol_tags, nodal_values):
 
             # evaluate the derivatives at these points
             phi = finite_element.evaluate_basis(np.array([[u, v, w]]).flatten())
+
+
 
             # compute the field
             if num_coords == 1:
@@ -444,6 +449,6 @@ def evaluate_fem_solution_node_interpolation(gmsh_model, points, solver, coil_li
     # loop over the domains
     for indx in domain_list:
         # lets average the element fields to get the nodal fields
-        b_node_list.append(solver.curl_curl_factory.compute_nodal_fields(x, [indx-1]) + b_coil)
+        b_node_list.append(solver.curl_curl_factory.compute_nodal_fields(x, [indx]) + b_coil)
 
     return evaluate_interpolation(points, gmsh_model, domain_list, b_node_list)
