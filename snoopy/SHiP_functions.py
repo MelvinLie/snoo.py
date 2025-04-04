@@ -469,6 +469,23 @@ def get_vector_field_mag_1(parameters,
         M_iron += 4*gmsh.model.occ.getMass(3, dom_wing)*iron_material_data["density(g/m3)"]
 
     else:
+        print(f"===============\n lc = {lc}")
+
+        print(f"X_mgap_1 = {X_mgap_1}")
+        print(f"X_core_1 = {X_core_1}")
+        print(f"X_void_1 = {X_void_1}")
+        print(f"X_yoke_1 = {X_yoke_1}")
+        print(f"X_mgap_2 = {X_mgap_2}")
+        print(f"X_core_2 = {X_core_2}")
+        print(f"X_void_2 = {X_void_2}")
+        print(f"X_yoke_2 = {X_yoke_2}")
+        print(f"Y_core_1 = {Y_core_1}")
+        print(f"Y_void_1 = {Y_void_1}")
+        print(f"Y_yoke_1 = {Y_yoke_1}")
+        print(f"Y_core_2 = {Y_core_2}")
+        print(f"Y_void_2 = {Y_void_2}")
+        print(f"Y_yoke_2 = {Y_yoke_2}")
+
         # the iron domain
         vol_iron = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1,
                                                       X_core_1,
@@ -1261,6 +1278,15 @@ def get_vector_field_mag_3(parameters, df_index=0, lc=0.2,
         The positions and field components in a 3D numpy grid.
     '''
 
+    print("***************************************************")
+    print("***************************************************")
+    print("***************************************************")
+    print("***************************************************")
+    print("**************Here****************")
+    print("***************************************************")
+    print("***************************************************")
+    print("***************************************************")
+    print("***************************************************")
 
     # ====================================================
     # read the material data
@@ -2110,7 +2136,7 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     return ret_vals
 
 
-def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
+def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
@@ -2184,7 +2210,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
     # ====================================================
     # mesh generation
     gmsh.initialize()
-    gmsh.model.add("make mesh mag 1 template")
+    gmsh.model.add("make mesh nc sc template")
     gmsh.option.setString("Geometry.OCCTargetUnit", "M") 
    
     # Read the geometry parameters for the normal conducting magnet
@@ -2320,7 +2346,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
                                                          yoke_type=2)
 
     # the iron domain
-    vol_air = vol_air = snoopy.add_SHIP_box(gmsh.model, 0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min, lc=5*lc)
+    vol_air = vol_air = snoopy.add_SHIP_box(gmsh.model, 0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min, lc=2*lc)
     # gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
     gmsh.model.occ.synchronize()
 
@@ -2349,7 +2375,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
     gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
     gmsh.model.occ.synchronize()
 
-    gmsh.option.setNumber("Mesh.MeshSizeFactor", lc)
+    # gmsh.option.setNumber("Mesh.MeshSizeFactor", lc)
 
     # we then generate the mesh
     gmsh.model.mesh.generate(3)
@@ -3461,7 +3487,7 @@ def plot_geometry_ncsc(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edg
     gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
     gmsh.model.occ.synchronize()
 
-    gmsh.option.setNumber("Mesh.MeshSizeFactor", lc)
+    # gmsh.option.setNumber("Mesh.MeshSizeFactor", lc)
 
     # we then generate the mesh
     gmsh.model.mesh.generate(3)
