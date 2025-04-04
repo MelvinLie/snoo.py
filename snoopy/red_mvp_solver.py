@@ -9,6 +9,7 @@ from .curl_curl_assembler import CurlCurlAssembler
 from .materials import ConstantReluctance
 
 from .mesh_tools import get_edge_boundary_dofs
+from .mesh_tools import get_cotree_dofs
 
 class RedMVPSolver():
     '''This is a solver for the reduced vector potential formulation.
@@ -117,7 +118,7 @@ class RedMVPSolver():
 
         return mask
 
-    def solve(self, tolerance = 1e-4, x_0=np.zeros((0, )), maxiter=-1):
+    def solve(self, tolerance = 1e-4, x_0=np.zeros((0, )), maxiter=-1, apply_gauge=False):
         '''Solve the problem.
 
         :param tolerance:
@@ -164,6 +165,10 @@ class RedMVPSolver():
 
         # make a boundary mask for the dirichlet boundary condition
         mask = self.make_boundary_mask()
+
+        if apply_gauge:
+            tree_dofs, _ = get_cotree_dofs(self.curl_curl_factory.mesh)
+            mask[tree_dofs] = False
 
         # initalize current solution vector
         x_n = x_0.copy()

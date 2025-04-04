@@ -144,10 +144,6 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
     valid_geometry = True
 
 
-    print(f"area 1 = {A1:.2f} m2")
-    print(f"area 2 = {A2:.2f} m2")
-    print(f"area 3 = {A3:.2f} m2")
-
     if parameters_df["yoke_type"][df_index] == 'Mag1' or parameters_df["yoke_type"][df_index] == 'Mag2':
 
         # the type 1 or 2 magnet
@@ -166,7 +162,7 @@ def get_NI(B_goal, parameters_df, df_index, materials_directory='files/materials
         H1 = reluctance.evaluate_nu(B_goal)*B_goal
         H2 = reluctance.evaluate_nu(Phi/A2)*Phi/A2
         H3 = reluctance.evaluate_nu(Phi/A3)*Phi/A3
-
+        
         NI = H1*l1 + H2*l2 + H3*l3
 
         if B_goal < 0.0:
@@ -2119,7 +2115,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
                   materials_directory='files/materials',
-                  quad_order=8):
+                  quad_order=6):
     '''Get the vector point cloud for the HASC template, i.e. the coupling
     of hardon absorber and superconducting magnet.
     
@@ -2172,8 +2168,18 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
     # ====================================================
     # read the material data
     reluctance_iron = snoopy.Reluctance(os.path.join(materials_directory,
-                                                     parameters["material"][df_index]))
+                                                     parameters["material"][df_index + 1]))
     reluctance_air = snoopy.ConstantReluctance(1e7/4/np.pi)
+
+    with open(os.path.join(materials_directory, parameters["material"][df_index + 1])) as f:
+        iron_material_data = json.load(f)
+
+
+    with open(os.path.join(materials_directory, parameters["coil_material"][df_index+1])) as f:
+        conductor_material_data = json.load(f)
+
+    # get the target current density
+    J_tar = parameters["J_tar(A/mm2)"][df_index+1]*1e6
 
     # ====================================================
     # mesh generation
@@ -2328,6 +2334,15 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
     dom_air = fragments[2][1]
     dom_sc_yoke = fragments[3][1]
 
+    # in the optimization of the hybrid muon shield. we do not account for the
+    # magnetized hadron stopper.
+    # we therefore consider only the superconducting magnet for the calculation of the
+    # iron mass
+
+    # get the volume of the iron domain
+    M_iron = 4*gmsh.model.occ.getMass(3, dom_sc_core)*iron_material_data["density(g/m3)"]
+    M_iron += 4*gmsh.model.occ.getMass(3, dom_sc_yoke)*iron_material_data["density(g/m3)"]
+
     # and we define physical domains
     gmsh.model.addPhysicalGroup(3, [dom_nc, dom_sc_core, dom_sc_yoke], 1, name = "Iron")
     gmsh.model.occ.synchronize()
@@ -2432,6 +2447,23 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
 
     coil_list.append(snoopy.RacetrackCoil(kp_2, y_2, coil_radius_2, current_2/num_cond_2))
 
+    # the turn perimeter
+    turn_perimeter = coil_list[1].get_length()
+
+    # in the optimization of the hybrid muon shield. we do not account for the
+    # magnetized hadron stopper.
+    # we therefore consider only the superconducting magnet for the calculation of the
+    # coil mass
+
+    # this is the cupper cross section using the target current density
+    A_cu = abs(current_2)/J_tar
+
+    # this is the available coil volume
+    M_coil = A_cu*turn_perimeter*conductor_material_data["density(g/m3)"]
+
+    # ====================================================
+    # The power consumption
+    Q = abs(current_2*current_2)*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
     if plot_geo:
 
@@ -2443,7 +2475,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
         snoopy.plot_domain(pl, gmsh.model.mesh, dom_nc, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
         snoopy.plot_domain(pl, gmsh.model.mesh, dom_sc_core, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
         snoopy.plot_domain(pl, gmsh.model.mesh, dom_sc_yoke, reflect_xz=True, reflect_yz=True, show_edges=True, opacity=1.0)
-        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)
+        snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0, plot_feature_edges=False)
         for coil in coil_list:
             coil.plot_pv(pl)
         pl.show_grid()
@@ -2528,7 +2560,7 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
         out_params_df.to_csv(os.path.join(result_directory, 'parameters' + result_spec + '.csv'), index=False)
 
 
-    ret_vals = [points, B_i + B_coil]
+    ret_vals = [points, B_i + B_coil, M_iron, M_coil, Q, J_tar]
 
     if eval_pos.shape[0] > 0:
       
@@ -3244,3 +3276,254 @@ def plot_geometry_mag_4(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_ed
 
     for coil in coil_list:
        coil.plot_pv(pl)
+
+def plot_geometry_ncsc(pl, parameters, df_index=0, lc=1.0, opacity=0.0, show_edges=False, plot_feature_edges=True, step_filename=''):
+    '''Plot the geometry for the cross talk of normal and superconducting magnet
+     
+    :params pl:
+       The plotter object.
+
+    :params parameters:
+       The magnet parameters as pandas dataframe. See the
+       SHiP documentation for details.
+
+    :param df_index:
+       The row in the pandas parameter dataframe.
+   
+    :param lc:
+       The mesh size parameter. Default = 0.5.
+
+    :param opacity:
+       The opacity of the iron domain. Default=False.
+
+    :param show_edges:
+       Set this flag to enable plotting the edges. Default=True.
+
+    :return:
+       None
+    '''
+    # ====================================================
+    # mesh generation
+    gmsh.initialize()
+    gmsh.model.add("make mesh nc sc template")
+    gmsh.option.setString("Geometry.OCCTargetUnit", "M") 
+   
+    # Read the geometry parameters for the normal conducting magnet
+    X_mgap_1_1 = parameters["Xmgap1(m)"][df_index]
+    X_mgap_2_1 = parameters["Xmgap2(m)"][df_index]
+
+    X_core_1_1 = parameters["Xcore1(m)"][df_index]
+    X_core_2_1 = parameters["Xcore2(m)"][df_index]
+
+    X_void_1_1 = parameters["Xvoid1(m)"][df_index]
+    X_void_2_1 = parameters["Xvoid2(m)"][df_index]
+
+    X_yoke_1_1 = parameters["Xyoke1(m)"][df_index]
+    X_yoke_2_1 = parameters["Xyoke2(m)"][df_index]
+
+    Y_core_1_1 = parameters["Ycore1(m)"][df_index]
+    Y_core_2_1 = parameters["Ycore2(m)"][df_index]
+
+    Y_void_1_1 = parameters["Yvoid1(m)"][df_index]
+    Y_void_2_1 = parameters["Yvoid2(m)"][df_index]
+
+    Y_yoke_1_1 = parameters["Yyoke1(m)"][df_index]
+    Y_yoke_2_1 = parameters["Yyoke2(m)"][df_index]
+
+    Z_len_1 = parameters["Z_len(m)"][df_index]
+    Z_pos_1 = parameters["Z_pos(m)"][df_index]
+   
+    yoke_spacer_1 = parameters["yoke_spacer(mm)"][df_index]*1e-3
+    ins_1 = parameters["insulation(mm)"][df_index]*1e-3
+    current_1 = parameters["NI(A)"][df_index]
+    coil_radius_1 = 0.5*parameters["coil_diam(mm)"][df_index]*1e-3
+
+    delta_x_1 = parameters["delta_x(m)"][df_index]
+    delta_y_1 = parameters["delta_y(m)"][df_index]
+    delta_z_1 = parameters["delta_z(m)"][df_index]
+
+    field_density_1 = 0.5*parameters["field_density"][df_index]
+
+    # Read the geometry parameters for the superconducting magnet
+    X_mgap_1_2 = parameters["Xmgap1(m)"][df_index + 1]
+    X_mgap_2_2 = parameters["Xmgap2(m)"][df_index + 1]
+
+    X_core_1_2 = parameters["Xcore1(m)"][df_index + 1]
+    X_core_2_2 = parameters["Xcore2(m)"][df_index + 1]
+
+    X_void_1_2 = parameters["Xvoid1(m)"][df_index + 1]
+    X_void_2_2 = parameters["Xvoid2(m)"][df_index + 1]
+
+    X_yoke_1_2 = parameters["Xyoke1(m)"][df_index + 1]
+    X_yoke_2_2 = parameters["Xyoke2(m)"][df_index + 1]
+
+    Y_core_1_2 = parameters["Ycore1(m)"][df_index + 1]
+    Y_core_2_2 = parameters["Ycore2(m)"][df_index + 1]
+
+    Y_void_1_2 = parameters["Yvoid1(m)"][df_index + 1]
+    Y_void_2_2 = parameters["Yvoid2(m)"][df_index + 1]
+
+    Y_yoke_1_2 = parameters["Yyoke1(m)"][df_index + 1]
+    Y_yoke_2_2 = parameters["Yyoke2(m)"][df_index + 1]
+
+    Z_len_2 = parameters["Z_len(m)"][df_index + 1]
+    Z_pos_2 = parameters["Z_pos(m)"][df_index + 1]
+   
+    yoke_spacer_2 = parameters["yoke_spacer(mm)"][df_index + 1]*1e-3
+    ins_2 = parameters["insulation(mm)"][df_index + 1]*1e-3
+    current_2 = parameters["NI(A)"][df_index + 1]
+    coil_radius_2 = 0.5*parameters["coil_diam(mm)"][df_index + 1]*1e-3
+
+    delta_x_2 = parameters["delta_x(m)"][df_index + 1]
+    delta_y_2 = parameters["delta_y(m)"][df_index + 1]
+    delta_z_2 = parameters["delta_z(m)"][df_index + 1]
+
+    field_density_2 = 0.5*parameters["field_density"][df_index + 1]
+
+    # the maximum number of turns
+    max_turns_1 = np.int64(parameters["max_turns"][df_index])
+    max_turns_2 = np.int64(parameters["max_turns"][df_index + 1])
+
+    # the limits in x, y, and z
+    lim_x = max([max([X_yoke_1_1, X_yoke_2_1]) + delta_x_1, max([X_yoke_1_2, X_yoke_2_2]) + delta_x_2])
+    lim_y = max([max([Y_yoke_1_1, Y_yoke_2_1]) + delta_y_1, max([Y_yoke_1_2, Y_yoke_2_2]) + delta_y_2])
+    z_min = Z_pos_1 - delta_z_1
+    z_max = Z_pos_2 + Z_len_2 + delta_z_2
+   
+    # the nc magnet iron domain
+    vol_nc = snoopy.add_SHIP_iron_yoke(gmsh.model, X_mgap_1_1,
+                                                    X_core_1_1,
+                                                    X_void_1_1,
+                                                    X_yoke_1_1,
+                                                    X_mgap_2_1, 
+                                                    X_core_2_1,
+                                                    X_void_2_1,
+                                                    X_yoke_2_1,
+                                                    Y_core_1_1,
+                                                    Y_void_1_1,
+                                                    Y_yoke_1_1,
+                                                    Y_core_2_1,
+                                                    Y_void_2_1,
+                                                    Y_yoke_2_1,
+                                                    Z_len_1, 
+                                                    Z_pos=Z_pos_1,
+                                                    lc=lc,
+                                                    lc_inner=lc,
+                                                    yoke_type=1)
+
+    # the sc magnet core domain
+    vol_sc_core = snoopy.add_SHIP_iron_core(gmsh.model, X_core_1_2,
+                                                    X_core_2_2,
+                                                    Y_core_1_2,
+                                                    Y_core_2_2,
+                                                    Z_len_2,
+                                                    Z_pos=Z_pos_2,
+                                                    lc=lc)
+
+    # the sc magnet yoke domain
+    vol_sc_yoke = snoopy.add_SHIP_iron_yoke(gmsh.model, 0.0, X_core_1_2,
+                                                         X_void_1_2,
+                                                         X_yoke_1_2,
+                                                         0.0, 
+                                                         X_core_2_2,
+                                                         X_void_2_2,
+                                                         X_yoke_2_2,
+                                                         Y_core_1_2,
+                                                         Y_void_1_2,
+                                                         Y_yoke_1_2,
+                                                         Y_core_2_2,
+                                                         Y_void_2_2,
+                                                         Y_yoke_2_2,
+                                                         Z_len_2, 
+                                                         Z_pos=Z_pos_2,
+                                                         lc=lc,
+                                                         lc_inner=lc,
+                                                         yoke_type=2)
+
+    # the iron domain
+    vol_air = vol_air = snoopy.add_SHIP_box(gmsh.model, 0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min, lc=5*lc)
+    # gmsh.model.occ.addBox(0.0, 0.0, z_min, lim_x, lim_y, z_max - z_min)
+    gmsh.model.occ.synchronize()
+
+    # fragment perfoms something like a union
+    fragments, _ = gmsh.model.occ.fragment([(3, vol_air)], [(3, vol_nc), (3, vol_sc_core), (3, vol_sc_yoke)])
+    gmsh.model.occ.synchronize()
+
+    # we get the domains of the fragmentation
+    dom_nc = fragments[0][1]
+    dom_sc_core = fragments[1][1]
+    dom_air = fragments[2][1]
+    dom_sc_yoke = fragments[3][1]
+
+    # and we define physical domains
+    gmsh.model.addPhysicalGroup(3, [dom_nc, dom_sc_core, dom_sc_yoke], 1, name = "Iron")
+    gmsh.model.occ.synchronize()
+    gmsh.model.addPhysicalGroup(3, [dom_air], 2, name = "Air")
+    gmsh.model.occ.synchronize()
+
+    gmsh.option.setNumber("Mesh.MeshSizeFactor", lc)
+
+    # we then generate the mesh
+    gmsh.model.mesh.generate(3)
+    gmsh.model.occ.synchronize()
+
+    # ====================================================
+    # Make the coil objects
+
+    # this list stores the coil objects
+    coil_list = []
+
+    # determine the slot sizes
+    slot_size_1 = 2*min(Y_core_1_1, Y_core_2_1)
+    slot_size_2 = 2*min(Y_core_1_2, Y_core_2_2)
+
+    # determine the number of conductors
+    num_cond_1 = np.int32(slot_size_1/2/(coil_radius_1 + ins_1))
+
+    # do not allow more conductors than a certain amount
+    if num_cond_1 > max_turns_1:
+        num_cond_1 = max_turns_1
+
+    num_cond_2 = np.int32(slot_size_2/2/(coil_radius_2 + ins_2))
+
+    # do not allow more conductors than a certain amount
+    if num_cond_2 > max_turns_2:
+        num_cond_2 = max_turns_2
+
+    # these are the vertical positions
+    y_1 = np.linspace(-0.5*slot_size_1 + coil_radius_1 + ins_1,
+                    0.5*slot_size_1 - coil_radius_1 - ins_1, num_cond_1)
+    y_2 = np.linspace(-0.5*slot_size_2 + coil_radius_2 + ins_2,
+                    0.5*slot_size_2 - coil_radius_2 - ins_2, num_cond_2)
+
+    # make only a single coil for the first nc magnet
+    kp_1 = np.array([[-X_core_2_1 - yoke_spacer_1 - ins_1, Z_pos_1 + Z_len_1             ],
+                     [-X_core_2_1,          Z_pos_1 + Z_len_1 + yoke_spacer_1 + ins_1    ],
+                     [ X_core_2_1,          Z_pos_1 + Z_len_1 + yoke_spacer_1 + ins_1    ],
+                     [ X_core_2_1 + yoke_spacer_1 + ins_1,   Z_pos_1 + Z_len_1           ],
+                     [ X_core_1_1 + yoke_spacer_1 + ins_1,   Z_pos_1                   ],
+                     [ X_core_1_1,                       Z_pos_1-yoke_spacer_1 - ins_1 ],
+                     [-X_core_1_1,                       Z_pos_1-yoke_spacer_1 - ins_1 ],
+                     [-X_core_1_1 - yoke_spacer_1 - ins_1,   Z_pos_1                   ]])
+
+    coil_list.append(snoopy.RacetrackCoil(kp_1, y_1, coil_radius_1, current_1/num_cond_1))
+
+    # make only a single coil for the next sc magnet
+    kp_2 = np.array([[-X_core_2_2 - yoke_spacer_2 - ins_2, Z_pos_2 + Z_len_2             ],
+                     [-X_core_2_2,          Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2    ],
+                     [ X_core_2_2,          Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2    ],
+                     [ X_core_2_2 + yoke_spacer_2 + ins_2,   Z_pos_2 + Z_len_2           ],
+                     [ X_core_1_2 + yoke_spacer_2 + ins_2,   Z_pos_2                   ],
+                     [ X_core_1_2,                       Z_pos_2-yoke_spacer_2 - ins_2 ],
+                     [-X_core_1_2,                       Z_pos_2-yoke_spacer_2 - ins_2 ],
+                     [-X_core_1_2 - yoke_spacer_2 - ins_2,   Z_pos_2                   ]]) 
+
+    coil_list.append(snoopy.RacetrackCoil(kp_2, y_2, coil_radius_2, current_2/num_cond_2))
+
+    for coil in coil_list:
+       coil.plot_pv(pl)
+
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_nc, reflect_xz=True, reflect_yz=True, show_edges=show_edges, opacity=opacity, plot_feature_edges=plot_feature_edges)
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_sc_core, reflect_xz=True, reflect_yz=True, show_edges=show_edges, opacity=opacity, plot_feature_edges=plot_feature_edges)
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_sc_yoke, reflect_xz=True, reflect_yz=True, show_edges=show_edges, opacity=opacity, plot_feature_edges=plot_feature_edges)
+    snoopy.plot_domain(pl, gmsh.model.mesh, dom_air, reflect_xz=True, reflect_yz=True, show_edges=False, opacity=0.0)

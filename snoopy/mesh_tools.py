@@ -481,9 +481,17 @@ def get_cotree_dofs(gmsh_mesh):
     # get the edge connectivity
     edge_tags, edge_nodes  = gmsh_mesh.get_all_edges()
     edge_nodes.shape = (len(edge_tags), 2)
-    
-    nodes = np.zeros((len(edge_tags), 3))
 
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # for i, e in enumerate(edge_nodes):
+    #     node_1, _, _, _ = gmsh_mesh.getNode(e[0])
+    #     node_2, _, _, _ = gmsh_mesh.getNode(e[1])
+    #     ax.plot([node_1[0], node_2[0]],
+    #             [node_1[1], node_2[1]],
+    #             [node_1[2], node_2[2]])
+    # plt.show()
+    
     # setup a graph object
     G = nx.Graph()
     
@@ -500,7 +508,8 @@ def get_cotree_dofs(gmsh_mesh):
         raise ValueError("The input graph must be connected.")
 
     # get the spanning tree
-    spanning_tree = nx.maximum_spanning_tree(G,algorithm='boruvka')
+    # spanning_tree = nx.maximum_spanning_tree(G,algorithm='boruvka')
+    spanning_tree = nx.minimum_spanning_tree(G)
     spanning_tree_edges = list(spanning_tree.edges())
 
     # get the co-tree
@@ -513,6 +522,35 @@ def get_cotree_dofs(gmsh_mesh):
     print('number of co-tree edges = {}'.format(len(cotree_edges)))
 
 
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # for i, e in enumerate(list(tree_edges)):
+    #     node_1, _, _, _ = gmsh_mesh.getNode(e[0])
+    #     node_2, _, _, _ = gmsh_mesh.getNode(e[1])
+    #     if i == 0:
+    #         ax.plot([node_1[0], node_2[0]],
+    #                 [node_1[1], node_2[1]],
+    #                 [node_1[2], node_2[2]], color='k', label='Tree')
+    #     else:
+    #         ax.plot([node_1[0], node_2[0]],
+    #                 [node_1[1], node_2[1]],
+    #                 [node_1[2], node_2[2]], color='k')
+        
+    # for i, e in enumerate(list(all_edges - tree_edges)):
+    #     node_1, _, _, _ = gmsh_mesh.getNode(e[0])
+    #     node_2, _, _, _ = gmsh_mesh.getNode(e[1])
+    #     if i == 0:
+    #         ax.plot([node_1[0], node_2[0]],
+    #                 [node_1[1], node_2[1]],
+    #                 [node_1[2], node_2[2]], color='r', label='Co-Tree')
+    #     else:
+    #         ax.plot([node_1[0], node_2[0]],
+    #                 [node_1[1], node_2[1]],
+    #                 [node_1[2], node_2[2]], color='r')
+    # ax.legend()
+    # plt.show()
+
+
     tree_edge_dofs = []
     for edge in list(tree_edges):
         tree_edge_dofs.append(edge_id_map[tuple(sorted((edge[0], edge[1])))])
@@ -523,5 +561,6 @@ def get_cotree_dofs(gmsh_mesh):
 
     tree_edge_dofs = np.array(tree_edge_dofs, dtype=np.int64) - 1
     co_tree_edge_dofs = np.array(co_tree_edge_dofs, dtype=np.int64) - 1
+
 
     return tree_edge_dofs, co_tree_edge_dofs
