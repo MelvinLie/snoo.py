@@ -2136,7 +2136,7 @@ def get_vector_field_mag_4(parameters, df_index=0, lc=0.2,
     return ret_vals
 
 
-def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
+def get_vector_field_ncsc(parameters, df_index=0, lc=0.4,
                   geo_th=1e-5, run_gmsh=False, plot_geo=False,
                   plot_result=False, result_directory='none', result_spec='',
                   eval_pos=np.zeros((0, 3)),
@@ -2212,6 +2212,9 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
     gmsh.initialize()
     gmsh.model.add("make mesh nc sc template")
     gmsh.option.setString("Geometry.OCCTargetUnit", "M") 
+
+    # mesh size in the core domain
+    lc_inner = 0.5*lc
    
     # Read the geometry parameters for the normal conducting magnet
     X_mgap_1_1 = parameters["Xmgap1(m)"][df_index]
@@ -2285,6 +2288,9 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
 
     field_density_2 = 0.5*parameters["field_density"][df_index + 1]
 
+    # the coil winding radius
+    winding_radius = parameters["winding_radius(mm)"][df_index + 1]*1e-3
+
     # the maximum number of turns
     max_turns_1 = np.int64(parameters["max_turns"][df_index])
     max_turns_2 = np.int64(parameters["max_turns"][df_index + 1])
@@ -2316,14 +2322,30 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
                                                     lc_inner=lc,
                                                     yoke_type=1)
 
+    # the core geometry (here we add a small chamfer)
+    kp_core_1 = [gmsh.model.occ.addPoint(0.0, 0.0, Z_pos_2, lc_inner),
+                gmsh.model.occ.addPoint(0.0, 0.0, Z_pos_2 + Z_len_2, lc_inner),
+                gmsh.model.occ.addPoint(X_core_2_2 - winding_radius, 0.0, Z_pos_2 + Z_len_2, lc_inner),
+                gmsh.model.occ.addPoint(X_core_2_2, 0.0, Z_pos_2 + Z_len_2 - winding_radius, lc_inner),
+                gmsh.model.occ.addPoint(X_core_1_2, 0.0, Z_pos_2 + winding_radius, lc_inner),
+                gmsh.model.occ.addPoint(X_core_1_2 - winding_radius, 0.0, Z_pos_2, lc_inner)]
+
+    kp_core_2 = [gmsh.model.occ.addPoint(0.0, Y_core_1_2, Z_pos_2, lc_inner),
+                gmsh.model.occ.addPoint(0.0, Y_core_2_2, Z_pos_2 + Z_len_2, lc_inner),
+                gmsh.model.occ.addPoint(X_core_2_2 - winding_radius, Y_core_2_2, Z_pos_2 + Z_len_2, lc_inner),
+                gmsh.model.occ.addPoint(X_core_2_2, Y_core_2_2, Z_pos_2 + Z_len_2 - winding_radius, lc_inner),
+                gmsh.model.occ.addPoint(X_core_1_2, Y_core_1_2, Z_pos_2 + winding_radius, lc_inner),
+                gmsh.model.occ.addPoint(X_core_1_2 - winding_radius, Y_core_1_2, Z_pos_2, lc_inner)]
+
     # the sc magnet core domain
-    vol_sc_core = snoopy.add_SHIP_iron_core(gmsh.model, X_core_1_2,
-                                                    X_core_2_2,
-                                                    Y_core_1_2,
-                                                    Y_core_2_2,
-                                                    Z_len_2,
-                                                    Z_pos=Z_pos_2,
-                                                    lc=lc)
+    vol_sc_core = snoopy.add_SHiP_volume(gmsh.model, kp_core_1, kp_core_2)
+    # snoopy.add_SHIP_iron_core(gmsh.model, X_core_1_2,
+    #                                                 X_core_2_2,
+    #                                                 Y_core_1_2,
+    #                                                 Y_core_2_2,
+    #                                                 Z_len_2,
+    #                                                 Z_pos=Z_pos_2,
+    #                                                 lc=lc)
 
     # the sc magnet yoke domain
     vol_sc_yoke = snoopy.add_SHIP_iron_yoke(gmsh.model, 0.0, X_core_1_2,
@@ -2462,14 +2484,14 @@ def get_vector_field_ncsc(parameters, df_index=0, lc=0.2,
     coil_list.append(snoopy.RacetrackCoil(kp_1, y_1, coil_radius_1, current_1/num_cond_1))
 
     # make only a single coil for the next sc magnet
-    kp_2 = np.array([[-X_core_2_2 - yoke_spacer_2 - ins_2, Z_pos_2 + Z_len_2             ],
-                     [-X_core_2_2,          Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2    ],
-                     [ X_core_2_2,          Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2    ],
-                     [ X_core_2_2 + yoke_spacer_2 + ins_2,   Z_pos_2 + Z_len_2           ],
-                     [ X_core_1_2 + yoke_spacer_2 + ins_2,   Z_pos_2                   ],
-                     [ X_core_1_2,                       Z_pos_2-yoke_spacer_2 - ins_2 ],
-                     [-X_core_1_2,                       Z_pos_2-yoke_spacer_2 - ins_2 ],
-                     [-X_core_1_2 - yoke_spacer_2 - ins_2,   Z_pos_2                   ]]) 
+    kp_2 = np.array([[-X_core_2_2 - yoke_spacer_2 - ins_2, Z_pos_2 + Z_len_2 - winding_radius ],
+                     [-X_core_2_2 + winding_radius, Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2 ],
+                     [ X_core_2_2 - winding_radius, Z_pos_2 + Z_len_2 + yoke_spacer_2 + ins_2    ],
+                     [ X_core_2_2 + yoke_spacer_2 + ins_2,   Z_pos_2 + Z_len_2 - winding_radius],
+                     [ X_core_1_2 + yoke_spacer_2 + ins_2,   Z_pos_2 + winding_radius],
+                     [ X_core_1_2 - winding_radius, Z_pos_2-yoke_spacer_2 - ins_2 ],
+                     [-X_core_1_2 + winding_radius, Z_pos_2-yoke_spacer_2 - ins_2 ],
+                     [-X_core_1_2 - yoke_spacer_2 - ins_2,   Z_pos_2 + winding_radius ]]) 
 
     coil_list.append(snoopy.RacetrackCoil(kp_2, y_2, coil_radius_2, current_2/num_cond_2))
 
